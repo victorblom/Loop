@@ -6,7 +6,7 @@
 //  Copyright © 2016 Nathan Racklyeft. All rights reserved.
 //
 
-import InsulinKit
+import LoopKit
 import MinimedKit
 
 
@@ -18,12 +18,13 @@ extension LoopDataManager {
     func addPumpEvents(_ pumpEvents: [TimestampedHistoryEvent], from model: MinimedKit.PumpModel, completion: @escaping (_ error: DoseStore.DoseStoreError?) -> Void) {
         var events: [NewPumpEvent] = []
         var lastTempBasalAmount: DoseEntry?
-        var isRewound = false
+        // Always assume the sequence may have started rewound. LoopKit will ignore unmatched resume events.
+        var isRewound = true
         var title: String
 
         for event in pumpEvents {
             var dose: DoseEntry?
-            var eventType: InsulinKit.PumpEventType?
+            var eventType: LoopKit.PumpEventType?
 
             switch event.pumpEvent {
             case let bolus as BolusNormalPumpEvent:
