@@ -708,7 +708,6 @@ extension LoopDataManager {
             updateGroup.enter()
             glucoseStore.getRecentMomentumEffect { (effects) -> Void in
                 self.glucoseMomentumEffect = effects
-                NSLog("myLoop: +++ Momentum updated +++")
                 updateGroup.leave()
             }
         }
