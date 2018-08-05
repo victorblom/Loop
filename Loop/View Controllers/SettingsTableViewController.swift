@@ -83,6 +83,7 @@ final class SettingsTableViewController: UITableViewController {
         case insulinModel
         case carbRatio
         case insulinSensitivity
+        case estimatedParameters
     }
 
     fileprivate enum ServiceRow: Int, CaseCountable {
@@ -106,11 +107,20 @@ final class SettingsTableViewController: UITableViewController {
         case let vc as InsulinModelSettingsViewController:
             vc.deviceManager = dataManager
             vc.insulinModel = dataManager.loopManager.insulinModelSettings?.model
-
+            
             if let insulinSensitivitySchedule = dataManager.loopManager.insulinSensitivitySchedule {
                 vc.insulinSensitivitySchedule = insulinSensitivitySchedule
             }
-
+            
+            vc.delegate = self
+        case let vc as EstimatedParametersViewController:
+            vc.deviceManager = dataManager
+            vc.insulinModel = dataManager.loopManager.insulinModelSettings?.model
+            
+            if let insulinSensitivitySchedule = dataManager.loopManager.insulinSensitivitySchedule {
+                vc.insulinSensitivitySchedule = insulinSensitivitySchedule
+            }
+            
             vc.delegate = self
         default:
             break
@@ -279,8 +289,6 @@ final class SettingsTableViewController: UITableViewController {
                 if let suspendThreshold = dataManager.loopManager.settings.suspendThreshold {
                     let value = valueNumberFormatter.string(from: suspendThreshold.value, unit: suspendThreshold.unit) ?? SettingsTableViewCell.TapToSetString
                     configCell.detailTextLabel?.text = value
-                } else {
-                    configCell.detailTextLabel?.text = SettingsTableViewCell.TapToSetString
                 }
             case .insulinModel:
                 configCell.textLabel?.text = NSLocalizedString("Insulin Model", comment: "The title text for the insulin model setting row")
@@ -306,6 +314,8 @@ final class SettingsTableViewController: UITableViewController {
                 } else {
                     configCell.detailTextLabel?.text = SettingsTableViewCell.TapToSetString
                 }
+            case .estimatedParameters:
+                configCell.textLabel?.text = NSLocalizedString("Estimated Parameters", comment: "The title text for estimated parameters")
             }
 
             configCell.accessoryType = .disclosureIndicator
@@ -526,6 +536,8 @@ final class SettingsTableViewController: UITableViewController {
                 vc.syncSource = dataManager.pumpManager
 
                 show(vc, sender: sender)
+            case .estimatedParameters:
+                performSegue(withIdentifier: EstimatedParametersViewController.className, sender: sender)
             }
         case .loop:
             switch LoopRow(rawValue: indexPath.row)! {
@@ -785,6 +797,31 @@ extension SettingsTableViewController: InsulinModelSettingsViewControllerDelegat
     }
 }
 
+extension SettingsTableViewController: EstimatedParametersViewControllerDelegate {
+    func estimatedParametersViewControllerDidChangeValue(_ controller: EstimatedParametersViewController) {
+        guard let indexPath = self.tableView.indexPathForSelectedRow else {
+            return
+        }
+        
+        switch Section(rawValue: indexPath.section)! {
+        case .configuration:
+            switch ConfigurationRow(rawValue: indexPath.row)! {
+            case .insulinModel:
+                if let model = controller.insulinModel {
+                    dataManager.loopManager.insulinModelSettings = InsulinModelSettings(model: model)
+                }
+                
+                tableView.reloadRows(at: [indexPath], with: .none)
+            case .estimatedParameters:
+                break
+            default:
+                assertionFailure()
+            }
+        default:
+            assertionFailure()
+        }
+    }
+}
 
 extension SettingsTableViewController: LoopKitUI.TextFieldTableViewControllerDelegate {
     func textFieldTableViewControllerDidEndEditing(_ controller: LoopKitUI.TextFieldTableViewController) {

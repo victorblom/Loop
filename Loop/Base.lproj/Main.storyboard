@@ -85,6 +85,7 @@
                     <connections>
                         <outlet property="devicesSectionTitleView" destination="ywS-mm-GoX" id="7tF-Zf-Op2"/>
                         <segue destination="pi6-Dh-72V" kind="show" identifier="InsulinModelSettingsViewController" id="oOS-dJ-9ls"/>
+                        <segue destination="Ad1-zw-JGA" kind="show" identifier="EstimatedParametersViewController" id="HvC-cU-reF"/>
                     </connections>
                 </tableViewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="ymW-vT-DZk" userLabel="First Responder" sceneMemberID="firstResponder"/>
@@ -111,7 +112,7 @@
                     </constraints>
                 </view>
             </objects>
-            <point key="canvasLocation" x="1652" y="1979.4602698650676"/>
+            <point key="canvasLocation" x="1639" y="1979"/>
         </scene>
         <!--Predicted Glucose-->
         <scene sceneID="iWG-eJ-SCc">
@@ -1009,7 +1010,7 @@
                     </navigationBar>
                     <nil name="viewControllers"/>
                     <connections>
-                        <segue destination="4cb-Yq-02o" kind="relationship" relationship="rootViewController" id="6BC-rd-2iw"/>
+                        <segue destination="4cb-Yq-02o" kind="relationship" relationship="rootViewController" id="WoE-2S-0JL"/>
                     </connections>
                 </navigationController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="hu2-qg-8CR" userLabel="First Responder" sceneMemberID="firstResponder"/>
@@ -1111,6 +1112,7 @@
                             <outlet property="delegate" destination="pi6-Dh-72V" id="nPH-IM-5sk"/>
                         </connections>
                     </tableView>
+                    <navigationItem key="navigationItem" id="zey-Ex-bYK"/>
                     <connections>
                         <outlet property="durationPicker" destination="Nsn-Eh-Q51" id="4z5-GH-8j1"/>
                     </connections>
@@ -1124,7 +1126,108 @@
                     </date>
                 </datePicker>
             </objects>
-            <point key="canvasLocation" x="2477.5999999999999" y="1978.56071964018"/>
+            <point key="canvasLocation" x="2654" y="1741"/>
+        </scene>
+        <!--Estimated Parameters-->
+        <scene sceneID="vZY-Aq-9AD">
+            <objects>
+                <tableViewController title="Estimated Parameters" hidesBottomBarWhenPushed="YES" id="Ad1-zw-JGA" customClass="EstimatedParametersViewController" customModule="Loop" customModuleProvider="target" sceneMemberID="viewController">
+                    <tableView key="view" clipsSubviews="YES" contentMode="scaleToFill" alwaysBounceVertical="YES" dataMode="prototypes" style="plain" separatorStyle="default" rowHeight="44" sectionHeaderHeight="28" sectionFooterHeight="28" id="jh2-fi-hfe">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <prototypes>
+                            <tableViewCell clipsSubviews="YES" contentMode="scaleToFill" preservesSuperviewLayoutMargins="YES" layoutMarginsFollowReadableWidth="YES" selectionStyle="none" indentationWidth="10" reuseIdentifier="ChartTableViewCell" rowHeight="270" id="dLB-Tz-xXV" customClass="ChartTableViewCell" customModule="Loop" customModuleProvider="target">
+                                <rect key="frame" x="0.0" y="28" width="375" height="270"/>
+                                <autoresizingMask key="autoresizingMask"/>
+                                <tableViewCellContentView key="contentView" opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" tableViewCell="dLB-Tz-xXV" id="GTL-Cw-OtX">
+                                    <rect key="frame" x="0.0" y="0.0" width="375" height="269.5"/>
+                                    <autoresizingMask key="autoresizingMask"/>
+                                    <subviews>
+                                        <view contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="Iw5-Jb-4jD" customClass="ChartContainerView" customModule="LoopUI">
+                                            <rect key="frame" x="0.0" y="11" width="375" height="170"/>
+                                            <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                            <constraints>
+                                                <constraint firstAttribute="height" constant="170" id="mT0-ZY-5zs"/>
+                                            </constraints>
+                                        </view>
+                                        <label opaque="NO" userInteractionEnabled="NO" contentMode="left" verticalCompressionResistancePriority="749" textAlignment="natural" lineBreakMode="tailTruncation" numberOfLines="0" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="AhS-VB-f5z">
+                                            <rect key="frame" x="16" y="189" width="343" height="70"/>
+                                            <string key="text">An insulin activity model is used to estimate effects of insulin on glucose levels. An accurate model can help prevent insulin stacking and safely recommend corrective treatments.</string>
+                                            <fontDescription key="fontDescription" style="UICTFontTextStyleCaption1"/>
+                                            <color key="textColor" red="0.5568627451" green="0.56078431370000004" blue="0.57647058819999997" alpha="1" colorSpace="calibratedRGB"/>
+                                            <nil key="highlightedColor"/>
+                                        </label>
+                                    </subviews>
+                                    <constraints>
+                                        <constraint firstItem="AhS-VB-f5z" firstAttribute="leading" secondItem="GTL-Cw-OtX" secondAttribute="leadingMargin" id="2Qm-hd-1va"/>
+                                        <constraint firstItem="AhS-VB-f5z" firstAttribute="top" secondItem="Iw5-Jb-4jD" secondAttribute="bottom" constant="8" symbolic="YES" id="4oG-re-acL"/>
+                                        <constraint firstItem="AhS-VB-f5z" firstAttribute="trailing" secondItem="GTL-Cw-OtX" secondAttribute="trailingMargin" id="KJw-qL-nHS"/>
+                                        <constraint firstAttribute="bottomMargin" secondItem="AhS-VB-f5z" secondAttribute="bottom" priority="750" id="Ll3-FV-RUx"/>
+                                        <constraint firstAttribute="trailing" secondItem="Iw5-Jb-4jD" secondAttribute="trailing" id="RTf-Uz-WXT"/>
+                                        <constraint firstItem="Iw5-Jb-4jD" firstAttribute="leading" secondItem="GTL-Cw-OtX" secondAttribute="leading" id="WSO-5p-gBZ"/>
+                                        <constraint firstItem="Iw5-Jb-4jD" firstAttribute="top" secondItem="GTL-Cw-OtX" secondAttribute="topMargin" id="vOS-5d-kVc"/>
+                                    </constraints>
+                                </tableViewCellContentView>
+                                <connections>
+                                    <outlet property="chartContentView" destination="Iw5-Jb-4jD" id="aOT-75-LDd"/>
+                                </connections>
+                            </tableViewCell>
+                            <tableViewCell clipsSubviews="YES" contentMode="scaleToFill" preservesSuperviewLayoutMargins="YES" layoutMarginsFollowReadableWidth="YES" selectionStyle="default" accessoryType="checkmark" indentationWidth="10" reuseIdentifier="TitleSubtitleTextFieldTableViewCell" rowHeight="64" id="Avv-6P-hOD" customClass="TitleSubtitleTextFieldTableViewCell" customModule="Loop" customModuleProvider="target">
+                                <rect key="frame" x="0.0" y="298" width="375" height="64"/>
+                                <autoresizingMask key="autoresizingMask"/>
+                                <tableViewCellContentView key="contentView" opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="center" tableViewCell="Avv-6P-hOD" id="FPa-1B-ytk">
+                                    <rect key="frame" x="0.0" y="0.0" width="335" height="63.5"/>
+                                    <autoresizingMask key="autoresizingMask"/>
+                                    <subviews>
+                                        <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="750" verticalHuggingPriority="252" verticalCompressionResistancePriority="751" text="Label" textAlignment="natural" lineBreakMode="tailTruncation" numberOfLines="0" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="qeQ-9D-A4o">
+                                            <rect key="frame" x="16" y="11" width="42" height="20.5"/>
+                                            <fontDescription key="fontDescription" style="UICTFontTextStyleBody"/>
+                                            <color key="textColor" red="0.0" green="0.0" blue="0.0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                            <nil key="highlightedColor"/>
+                                        </label>
+                                        <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Label" textAlignment="natural" lineBreakMode="tailTruncation" numberOfLines="0" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="ULh-ka-pdt">
+                                            <rect key="frame" x="16" y="33.5" width="311" height="19.5"/>
+                                            <fontDescription key="fontDescription" style="UICTFontTextStyleFootnote"/>
+                                            <nil key="highlightedColor"/>
+                                        </label>
+                                        <textField opaque="NO" clipsSubviews="YES" contentMode="scaleToFill" contentHorizontalAlignment="left" contentVerticalAlignment="center" text="4 hour" textAlignment="right" adjustsFontSizeToFit="NO" minimumFontSize="17" translatesAutoresizingMaskIntoConstraints="NO" id="zrd-ad-zSe">
+                                            <rect key="frame" x="66" y="10.5" width="261" height="21"/>
+                                            <nil key="textColor"/>
+                                            <fontDescription key="fontDescription" style="UICTFontTextStyleBody"/>
+                                            <textInputTraits key="textInputTraits"/>
+                                        </textField>
+                                    </subviews>
+                                    <constraints>
+                                        <constraint firstItem="zrd-ad-zSe" firstAttribute="leading" secondItem="qeQ-9D-A4o" secondAttribute="trailing" constant="8" symbolic="YES" id="31f-Z8-RJj"/>
+                                        <constraint firstItem="ULh-ka-pdt" firstAttribute="top" secondItem="qeQ-9D-A4o" secondAttribute="bottom" constant="2" id="Bwq-4w-nym"/>
+                                        <constraint firstItem="qeQ-9D-A4o" firstAttribute="leading" secondItem="FPa-1B-ytk" secondAttribute="leadingMargin" id="DJp-Kl-g6N"/>
+                                        <constraint firstItem="qeQ-9D-A4o" firstAttribute="top" secondItem="FPa-1B-ytk" secondAttribute="topMargin" id="Fhx-p1-gbR"/>
+                                        <constraint firstItem="ULh-ka-pdt" firstAttribute="leading" secondItem="FPa-1B-ytk" secondAttribute="leadingMargin" id="YyG-oM-iiG"/>
+                                        <constraint firstAttribute="trailingMargin" relation="greaterThanOrEqual" secondItem="qeQ-9D-A4o" secondAttribute="trailing" priority="750" id="auD-kU-pb2"/>
+                                        <constraint firstAttribute="bottomMargin" secondItem="ULh-ka-pdt" secondAttribute="bottom" id="cva-oy-RWZ"/>
+                                        <constraint firstItem="zrd-ad-zSe" firstAttribute="baseline" secondItem="qeQ-9D-A4o" secondAttribute="baseline" id="sgr-4q-QqM"/>
+                                        <constraint firstItem="zrd-ad-zSe" firstAttribute="trailing" secondItem="FPa-1B-ytk" secondAttribute="trailingMargin" id="uLm-wO-ttE"/>
+                                        <constraint firstAttribute="trailingMargin" secondItem="ULh-ka-pdt" secondAttribute="trailing" id="wKh-Iu-GxQ"/>
+                                    </constraints>
+                                </tableViewCellContentView>
+                                <connections>
+                                    <outlet property="subtitleLabel" destination="ULh-ka-pdt" id="wlH-2O-vdV"/>
+                                    <outlet property="textField" destination="zrd-ad-zSe" id="t5t-ck-9LU"/>
+                                    <outlet property="titleLabel" destination="qeQ-9D-A4o" id="6Ob-gd-ruU"/>
+                                </connections>
+                            </tableViewCell>
+                        </prototypes>
+                        <connections>
+                            <outlet property="dataSource" destination="Ad1-zw-JGA" id="AaU-AP-BVO"/>
+                            <outlet property="delegate" destination="Ad1-zw-JGA" id="arh-xU-XRa"/>
+                        </connections>
+                    </tableView>
+                    <navigationItem key="navigationItem" id="Xyb-W6-NvP"/>
+                </tableViewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="bNj-fQ-OZj" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="2654" y="2448"/>
         </scene>
     </scenes>
     <resources>
