@@ -9,7 +9,6 @@ import UIKit
 import HealthKit
 import LoopKit
 
-
 protocol EstimatedParametersViewControllerDelegate: class {
     func estimatedParametersViewControllerDidChangeValue(_ controller: EstimatedParametersViewController)
 }
@@ -32,7 +31,7 @@ class EstimatedParametersViewController: ChartsTableViewController, Identifiable
     }
 
     weak var delegate: EstimatedParametersViewControllerDelegate?
-
+    
     private var initialInsulinModel: InsulinModel?
 
     /// The currently-selected model.
@@ -136,13 +135,23 @@ class EstimatedParametersViewController: ChartsTableViewController, Identifiable
         if active && visible && refreshContext {
             refreshContext = false
             charts.startDate = Calendar.current.nextDate(after: Date(), matching: DateComponents(minute: 0), matchingPolicy: .strict, direction: .backward) ?? Date()
-
-            let bolus = DoseEntry(type: .bolus, startDate: charts.startDate, value: 1, unit: .units)
+            
+            let date = Date()
+//            let basalRates: BasalRateSchedule?
+//            scheduledBasalRate = basalRates.value(at: date)
+            let insulinModel = ExponentialInsulinModelPreset.humalogNovologAdult
+            //let testDose = DoseEntry(suspendDate: date)
+            let testDose = DoseEntry(type: .tempBasal, startDate: date, endDate: date.addingTimeInterval(.hours(2)), value: 1.0, unit: .unitsPerHour)
+            let testEffects = [testDose].glucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivitySchedule)
+            let initialGlucoseQuantity = HKQuantity(unit: glucoseUnit, doubleValue: 200)
+            let initialGlucoseSample = HKQuantitySample(type: HKQuantityType.quantityType(forIdentifier: .bloodGlucose)!, quantity: initialGlucoseQuantity, start: date, end: date)
+            let testGlucose = LoopMath.predictGlucose(startingAt: initialGlucoseSample, effects: testEffects)
+            
+            let basal = DoseEntry(type: .bolus, startDate: charts.startDate, value: 2, unit: .units)
             let selectedModelIndex = self.selectedModelIndex
 
-            let startingGlucoseValue = insulinSensitivitySchedule.quantity(at: charts.startDate).doubleValue(for: glucoseUnit) + glucoseUnit.glucoseExampleTargetValue
-            let startingGlucoseQuantity = HKQuantity(unit: glucoseUnit, doubleValue: startingGlucoseValue)
-            let endingGlucoseQuantity = HKQuantity(unit: glucoseUnit, doubleValue: glucoseUnit.glucoseExampleTargetValue)
+            let startingGlucoseQuantity = HKQuantity(unit: glucoseUnit, doubleValue: 200)
+            let endingGlucoseQuantity = HKQuantity(unit: glucoseUnit, doubleValue: 100)
             let startingGlucoseSample = HKQuantitySample(type: HKQuantityType.quantityType(forIdentifier: .bloodGlucose)!, quantity: startingGlucoseQuantity, start: charts.startDate, end: charts.startDate)
 
             charts.glucoseDisplayRange = (min: endingGlucoseQuantity, max: startingGlucoseQuantity)
@@ -150,8 +159,10 @@ class EstimatedParametersViewController: ChartsTableViewController, Identifiable
             var unselectedModelValues = [[GlucoseValue]]()
 
             for (index, model) in allModels.enumerated() {
-                let effects = [bolus].glucoseEffects(insulinModel: model, insulinSensitivity: insulinSensitivitySchedule)
+                let effects = [basal].glucoseEffects(insulinModel: model, insulinSensitivity: insulinSensitivitySchedule)
                 let values = LoopMath.predictGlucose(startingAt: startingGlucoseSample, effects: effects)
+                let glucoseFirst = values.first?.quantity.doubleValue(for: glucoseUnit)
+                let glucoseLast = values.last?.quantity.doubleValue(for: glucoseUnit)
 
                 if selectedModelIndex == index {
                     charts.setSelectedInsulinModelValues(values)

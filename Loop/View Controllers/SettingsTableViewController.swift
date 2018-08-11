@@ -808,14 +808,8 @@ extension SettingsTableViewController: EstimatedParametersViewControllerDelegate
         switch Section(rawValue: indexPath.section)! {
         case .configuration:
             switch ConfigurationRow(rawValue: indexPath.row)! {
-            case .insulinModel:
-                if let model = controller.insulinModel {
-                    dataManager.loopManager.insulinModelSettings = InsulinModelSettings(model: model)
-                }
-                
-                tableView.reloadRows(at: [indexPath], with: .none)
             case .estimatedParameters:
-                break
+                break // do nothing now, may do auto-tuning parameter updates later
             default:
                 assertionFailure()
             }
