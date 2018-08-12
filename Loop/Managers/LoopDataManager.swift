@@ -1215,18 +1215,6 @@ extension LoopDataManager {
         
         self.glucoseUpdated = false // ensure we are only updating integral RC once per BG update
     
-        //dm61 below is just randome testing, should be deleted
-        let date = Date()
-        let insulinModel = ExponentialInsulinModelPreset.humalogNovologAdult
-        let startD = date.addingTimeInterval(.hours(-3))
-        let endD = date.addingTimeInterval(.hours(+3))
-        let testDose = DoseEntry(type: .tempBasal, startDate: startD, endDate: endD, value: 1.0, unit: .unitsPerHour)
-        let testEffects = [testDose].glucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivity)
-        let initialGlucoseQuantity = HKQuantity(unit: glucoseUnit, doubleValue: 200)
-        let initialGlucoseSample = HKQuantitySample(type: HKQuantityType.quantityType(forIdentifier: .bloodGlucose)!, quantity: initialGlucoseQuantity, start: date, end: date)
-        let testGlucose = LoopMath.predictGlucose(startingAt: initialGlucoseSample, effects: testEffects)
-        
-        //dm61 end of random testing
     }
 
     /// Runs the glucose prediction on the latest effect data.

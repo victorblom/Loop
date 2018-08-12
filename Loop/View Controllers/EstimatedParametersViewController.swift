@@ -136,12 +136,15 @@ class EstimatedParametersViewController: ChartsTableViewController, Identifiable
             refreshContext = false
             charts.startDate = Calendar.current.nextDate(after: Date(), matching: DateComponents(minute: 0), matchingPolicy: .strict, direction: .backward) ?? Date()
             
+            // try dose effect
             let date = Date()
-//            let basalRates: BasalRateSchedule?
-//            scheduledBasalRate = basalRates.value(at: date)
+            //let basalRates: BasalRateSchedule?
+            let dose1 = DoseEntry(type: .tempBasal, startDate: date, endDate: date.addingTimeInterval(.hours(2)), value: 1.0, unit: .unitsPerHour)
+            //let scheduledBasalRate = HKQuantity(unit: DoseUnit.unitsPerHour, doubleValue: 0.5)
             let insulinModel = ExponentialInsulinModelPreset.humalogNovologAdult
             //let testDose = DoseEntry(suspendDate: date)
             let testDose = DoseEntry(type: .tempBasal, startDate: date, endDate: date.addingTimeInterval(.hours(2)), value: 1.0, unit: .unitsPerHour)
+            //scheduledBasalRate: HKQuantity(unit: DoseEntry.unitsPerHour, doubleValue: 0.5))
             let testEffects = [testDose].glucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivitySchedule)
             let initialGlucoseQuantity = HKQuantity(unit: glucoseUnit, doubleValue: 200)
             let initialGlucoseSample = HKQuantitySample(type: HKQuantityType.quantityType(forIdentifier: .bloodGlucose)!, quantity: initialGlucoseQuantity, start: date, end: date)
