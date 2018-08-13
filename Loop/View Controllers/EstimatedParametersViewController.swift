@@ -144,7 +144,9 @@ class EstimatedParametersViewController: ChartsTableViewController, Identifiable
             let insulinModel = ExponentialInsulinModelPreset.humalogNovologAdult
             //let testDose = DoseEntry(suspendDate: date)
             let testDose = DoseEntry(type: .tempBasal, startDate: date, endDate: date.addingTimeInterval(.hours(2)), value: 1.0, unit: .unitsPerHour)
+            //testDose.scheduledBasalRate = HKQuantity(unit: DoseEntry.unitsPerHour, doubleValue: 0.5)
             //scheduledBasalRate: HKQuantity(unit: DoseEntry.unitsPerHour, doubleValue: 0.5))
+            let unitsPerHour = testDose.netBasalUnitsPerHour
             let testEffects = [testDose].glucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivitySchedule)
             let initialGlucoseQuantity = HKQuantity(unit: glucoseUnit, doubleValue: 200)
             let initialGlucoseSample = HKQuantitySample(type: HKQuantityType.quantityType(forIdentifier: .bloodGlucose)!, quantity: initialGlucoseQuantity, start: date, end: date)
