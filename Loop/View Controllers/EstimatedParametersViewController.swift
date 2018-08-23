@@ -15,7 +15,7 @@ protocol EstimatedParametersViewControllerDelegate: class {
 
 
 class EstimatedParametersViewController: ChartsTableViewController, IdentifiableClass {
-
+    
     var glucoseUnit: HKUnit {
         get {
             return charts.glucoseUnit
@@ -45,6 +45,8 @@ class EstimatedParametersViewController: ChartsTableViewController, Identifiable
             reloadData()
         }
     }
+    
+    var pastEffects: [LoopDataManager.Effects] = []
 
     override func glucoseUnitDidChange() {
         refreshContext = true
@@ -167,6 +169,12 @@ class EstimatedParametersViewController: ChartsTableViewController, Identifiable
             for case let cell as ChartTableViewCell in self.tableView.visibleCells {
                 cell.reloadChart()
             }
+            
+            // log effects for parameter estimation
+            for effect in pastEffects {
+                print(effect.date)
+            }
+            
         }
     }
 

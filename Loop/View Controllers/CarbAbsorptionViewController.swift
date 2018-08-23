@@ -486,9 +486,10 @@ final class CarbAbsorptionViewController: ChartsTableViewController, Identifiabl
             if let selectedCell = sender as? UITableViewCell, let indexPath = tableView.indexPath(for: selectedCell), indexPath.row < carbStatuses.count {
                 vc.originalCarbEntry = carbStatuses[indexPath.row].entry
             }
-
+            
             vc.defaultAbsorptionTimes = deviceManager.loopManager.carbStore.defaultAbsorptionTimes
             vc.preferredUnit = deviceManager.loopManager.carbStore.preferredUnit
+            vc.maximumDateFutureInterval = TimeInterval(hours: 10)
         default:
             break
         }

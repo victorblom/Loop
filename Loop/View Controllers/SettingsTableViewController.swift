@@ -118,6 +118,8 @@ final class SettingsTableViewController: UITableViewController {
         case let vc as EstimatedParametersViewController:
             vc.deviceManager = dataManager
             vc.insulinModel = dataManager.loopManager.insulinModelSettings?.model
+            dataManager.loopManager.effectsForParameterEstimation()
+            vc.pastEffects = dataManager.loopManager.pastEffectsForEstimation
             
             if let insulinSensitivitySchedule = dataManager.loopManager.insulinSensitivitySchedule {
                 vc.insulinSensitivitySchedule = insulinSensitivitySchedule
