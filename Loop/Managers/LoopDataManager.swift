@@ -628,7 +628,6 @@ extension LoopDataManager {
 
         guard let lastGlucoseDate = latestGlucoseDate else {
             throw LoopError.missingDataError(.glucose)
-<<<<<<< HEAD
         }
         
         // Reinitialize integral retrospective correction states based on past 60 minutes of data
@@ -696,8 +695,7 @@ extension LoopDataManager {
             self.insulinEffect = nil
             self.carbEffect = nil
             self.retrospectiveGlucoseChange = nil
-=======
->>>>>>> dev
+
         }
 
         let retrospectiveStart = lastGlucoseDate.addingTimeInterval(-settings.retrospectiveCorrectionInterval)
@@ -1189,21 +1187,15 @@ extension LoopDataManager {
         
         guard let carbEffect = self.carbEffect else {
             self.retrospectivePredictedGlucose = nil
-<<<<<<< HEAD
             self.overallRetrospectiveCorrection = nil
             self.glucoseUpdated = false
-=======
->>>>>>> dev
             throw LoopError.missingDataError(.carbEffect)
         }
 
         guard let insulinEffect = self.insulinEffect else {
             self.retrospectivePredictedGlucose = nil
-<<<<<<< HEAD
             self.overallRetrospectiveCorrection = nil
             self.glucoseUpdated = false
-=======
->>>>>>> dev
             throw LoopError.missingDataError(.insulinEffect)
         }
         
@@ -1255,7 +1247,6 @@ extension LoopDataManager {
         let glucoseUnit = HKUnit.milligramsPerDeciliter
         let velocityUnit = glucoseUnit.unitDivided(by: HKUnit.second())
 
-<<<<<<< HEAD
         // get user settings relevant for calculation of integral retrospective correction safety parameters
         guard
             let glucoseTargetRange = settings.glucoseTargetRangeSchedule,
@@ -1346,13 +1337,6 @@ extension LoopDataManager {
         // Determine the interval of discrepancy, requiring a minimum of the configured interval to avoid magnifying effects from short intervals
         let discrepancyTime = max(change.end.endDate.timeIntervalSince(change.start.endDate), settings.retrospectiveCorrectionInterval)
         let velocity = HKQuantity(unit: velocityUnit, doubleValue: scaledDiscrepancy / discrepancyTime)
-=======
-        let discrepancy = change.end.quantity.doubleValue(for: glucoseUnit) - lastGlucose.quantity.doubleValue(for: glucoseUnit) // mg/dL
-
-        // Determine the interval of discrepancy, requiring a minimum of the configured interval to avoid magnifying effects from short intervals
-        let discrepancyTime = max(change.end.endDate.timeIntervalSince(change.start.endDate), settings.retrospectiveCorrectionInterval)
-        let velocity = HKQuantity(unit: velocityUnit, doubleValue: discrepancy / discrepancyTime)
->>>>>>> dev
         let type = HKQuantityType.quantityType(forIdentifier: HKQuantityTypeIdentifier.bloodGlucose)!
         let glucose = HKQuantitySample(type: type, quantity: change.end.quantity, start: change.end.startDate, end: change.end.endDate)
         
