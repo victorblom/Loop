@@ -1345,12 +1345,8 @@
 			children = (
 				7D23667C21250C7E0028B67D /* LocalizedString.swift */,
 			);
-<<<<<<< HEAD
 			name = Common;
 			path = "New Group";
-=======
-			path = Common;
->>>>>>> dev
 			sourceTree = "<group>";
 		};
 		968DCD53F724DE56FFE51920 /* Frameworks */ = {
