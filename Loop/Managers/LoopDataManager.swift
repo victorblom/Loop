@@ -821,8 +821,8 @@ extension LoopDataManager {
         dateFormatter.timeStyle = .medium
         dateFormatter.locale = Locale(identifier: "en_US")
         
-        NSLog("myLoopPE ****************************************************************************")
-        NSLog("myLoopPE %@", dateFormatter.string(from: Date()))
+        NSLog("myLoop ****************************************************************************")
+        NSLog("myLoop %@", dateFormatter.string(from: Date()))
         
         // Fetch glucose values
         var latestGlucoseDate: Date?
@@ -836,11 +836,11 @@ extension LoopDataManager {
         _ = updateGroup.wait(timeout: .distantFuture)
         
         guard let lastGlucoseDate = latestGlucoseDate else {
-            NSLog("myLoopPE: *** No past glucose samples found ***")
+            NSLog("myLoop: *** No past glucose samples found ***")
             return
         }
         
-        NSLog("myLoopPE: +++ %d past glucose values +++", glucoseValues!.count)
+        NSLog("myLoop: +++ %d past glucose values +++", glucoseValues!.count)
         
         let estimationStart = lastGlucoseDate.addingTimeInterval(TimeInterval(hours: -estimationHours))
         
@@ -851,7 +851,7 @@ extension LoopDataManager {
             switch result {
             case .failure(let error):
                 self.logger.error(error)
-                NSLog("myLoopPE: *** Could not get past insulin effects ***")
+                NSLog("myLoop: *** Could not get past insulin effects ***")
             case .success(let effects):
                 pastInsulinEffects = effects
             }
@@ -859,10 +859,10 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         if pastInsulinEffects.count == 0 {
-            NSLog("myLoopPE: XXX Past insulin effects not available XXX")
+            NSLog("myLoop: XXX Past insulin effects not available XXX")
             return
         } else {
-            NSLog("myLoopPE: +++ %d past insulin effects +++", pastInsulinEffects.count)
+            NSLog("myLoop: +++ %d past insulin effects +++", pastInsulinEffects.count)
         }
         
         // find update carb effects over estimationHours
@@ -875,7 +875,7 @@ extension LoopDataManager {
             switch result {
             case .failure(let error):
                 self.logger.error(error)
-                NSLog("myLoopPE: *** Could not get past carb effects ***")
+                NSLog("myLoop: *** Could not get past carb effects ***")
             case .success(let effects):
                 pastCarbEffects = effects
             }
@@ -883,10 +883,10 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         if pastCarbEffects.count == 0 {
-            NSLog("myLoopPE: XXX Past carb effects not available XXX")
+            NSLog("myLoop: XXX Past carb effects not available XXX")
             return
         } else {
-            NSLog("myLoopPE: +++ %d past carb effects +++", pastCarbEffects.count)
+            NSLog("myLoop: +++ %d past carb effects +++", pastCarbEffects.count)
         }
 
          // construct array of past 30-min glucose changes
@@ -908,10 +908,10 @@ extension LoopDataManager {
             }
         }
         if pastGlucoseChanges.count == 0 {
-            NSLog("myLoopPE: XXX Array of past BG changes not initialized XXX")
+            NSLog("myLoop: XXX Array of past BG changes not initialized XXX")
             return
         } else {
-            NSLog("myLoopPE: +++ %d past glucose changes +++", pastGlucoseChanges.count)
+            NSLog("myLoop: +++ %d past glucose changes +++", pastGlucoseChanges.count)
         }
         
         // compute effects for past retrospective glucose changes
