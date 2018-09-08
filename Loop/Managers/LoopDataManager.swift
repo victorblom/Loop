@@ -821,6 +821,18 @@ extension LoopDataManager {
         dateFormatter.timeStyle = .medium
         dateFormatter.locale = Locale(identifier: "en_US")
         
+        // dm61 try out splitting ISF schedule into time intervals from start to end dates
+        let insulinSensitivity = insulinSensitivitySchedule
+        let start = Date()
+        let end = start.addingTimeInterval(TimeInterval(hours: 6))
+        for scheduled in insulinSensitivity!.between(start: start, end: end) {
+            // Generate a unique identifier based on the start/end timestamps
+            let start1 = Swift.max(start, scheduled.startDate)
+            let end1 = Swift.min(end, scheduled.endDate)
+            let currentISF = insulinSensitivity!.quantity(at: start1).doubleValue(for: glucoseUnit)
+            NSLog("myLoopXX ISF from %@ to %@ is %4.2f", dateFormatter.string(from: start1), dateFormatter.string(from: end1), currentISF)
+        }
+        
         NSLog("myLoop ****************************************************************************")
         NSLog("myLoop %@", dateFormatter.string(from: Date()))
         
