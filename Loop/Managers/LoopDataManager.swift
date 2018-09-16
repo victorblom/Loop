@@ -973,6 +973,27 @@ extension LoopDataManager {
             
         }
         
+        // find total insulin delivered over estimationHours
+        updateGroup.enter()
+        var insulinDelivered: InsulinValue? = nil
+        self.doseStore.getTotalUnitsDelivered(
+            since: estimationStart
+        ) { (result) -> Void in
+            switch result {
+            case .failure(let error):
+                self.logger.error(error)
+                NSLog("myLoop: *** Could not get total insulin delivered ***")
+            case .success(let result):
+                insulinDelivered = result
+            }
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        
+        if insulinDelivered != nil {
+            NSLog("myLoop: initial dose at %@, total insulin delivered = %4.2f", dateFormatter.string(from: insulinDelivered!.startDate), insulinDelivered!.value)
+        }
+        
     }
 
     private func notify(forChange context: LoopUpdateContext) {
