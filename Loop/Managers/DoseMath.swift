@@ -230,7 +230,7 @@ extension Collection where Iterator.Element == GlucoseValue {
         at date: Date,
         initialThreshold: HKQuantity,
         suspendThreshold: HKQuantity,
-        sensitivity: HKQuantity,
+        sensitivitySchedule: InsulinSensitivitySchedule,
         model: InsulinModel
     ) -> InsulinCorrection? {
         var minGlucose: GlucoseValue?
@@ -241,10 +241,16 @@ extension Collection where Iterator.Element == GlucoseValue {
         // Only consider predictions within the model's effect duration
         let validDateRange = DateInterval(start: date, duration: model.effectDuration)
 
+        let sensitivity = sensitivitySchedule.quantity(at: date)
         let unit = correctionRange.unit
         let sensitivityValue = sensitivity.doubleValue(for: unit)
         let initialThresholdValue = initialThreshold.doubleValue(for: unit)
         let suspendThresholdValue = suspendThreshold.doubleValue(for: unit)
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .medium
+        dateFormatter.locale = Locale(identifier: "en_US")
 
         // For each prediction above target, determine the amount of insulin necessary to correct glucose based on the modeled effectiveness of the insulin at that time
         for prediction in self {
@@ -277,9 +283,27 @@ extension Collection where Iterator.Element == GlucoseValue {
 
             // Compute the dose required to bring this prediction to target:
             // dose = (Glucose Δ) / (% effect × sensitivity)
+            
+            // Old calculation of effectedSensitivity assuming dose-based ISF
+            let percentEffectedOld = 1 - model.percentEffectRemaining(at: time)
+            let effectedSensitivityOld = percentEffectedOld * sensitivityValue
 
-            let percentEffected = 1 - model.percentEffectRemaining(at: time)
-            let effectedSensitivity = percentEffected * sensitivityValue
+            // Compute effectedSensitivity using scheduled ISF values between date and prediction.startDate
+            var effectedSensitivity: Double = 0.0
+            for scheduledInsulinSensitivity in sensitivitySchedule.between(start: date, end: prediction.startDate) {
+                let startDate = Swift.max(date, scheduledInsulinSensitivity.startDate)
+                let startTime = startDate.timeIntervalSince(date)
+                let endDate = Swift.min(prediction.startDate, scheduledInsulinSensitivity.endDate)
+                let endTime = endDate.timeIntervalSince(date)
+                let currentSensitivityValue = sensitivitySchedule.quantity(at: startDate).doubleValue(for: unit)
+                // impact of current ISF on effected sensitivity
+                let percentEffected = model.percentEffectRemaining(at: startTime) - model.percentEffectRemaining(at: endTime)
+                effectedSensitivity += percentEffected * currentSensitivityValue
+            }
+            
+            // compare old and new calculations for effectedSensitivity
+            NSLog("myLoopISF: at %@, old: %4.2f, new: %4.2f", dateFormatter.string(from: prediction.startDate), effectedSensitivityOld, effectedSensitivity)
+            
             guard let correctionUnits = insulinCorrectionUnits(
                 fromValue: predictedGlucoseValue,
                 toValue: targetValue,
@@ -379,7 +403,7 @@ extension Collection where Iterator.Element == GlucoseValue {
             // for temps, initial threshold equals suspend threshold
             initialThreshold: suspendThreshold ?? correctionRange.minQuantity(at: date),
             suspendThreshold: suspendThreshold ?? correctionRange.minQuantity(at: date),
-            sensitivity: sensitivity.quantity(at: date),
+            sensitivitySchedule: sensitivity,
             model: model
         )
 
@@ -438,7 +462,7 @@ extension Collection where Iterator.Element == GlucoseValue {
             // for boluses, initial threshold is set to 55 mg/dL, which is below suspend threshold
             initialThreshold: HKQuantity(unit: HKUnit.milligramsPerDeciliter, doubleValue: 55),
             suspendThreshold: suspendThreshold ?? correctionRange.minQuantity(at: date),
-            sensitivity: sensitivity.quantity(at: date),
+            sensitivitySchedule: sensitivity,
             model: model
         ) else {
             return BolusRecommendation(amount: 0, pendingInsulin: pendingInsulin)
