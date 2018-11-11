@@ -1,8 +1,7 @@
-
-github "LoopKit/LoopKit" "dev"
-github "LoopKit/CGMBLEKit" "dev"
+github "dm61/LoopKit" "dev-wip"
+github "dm61/CGMBLEKit" "dev"
 github "i-schuetz/SwiftCharts" == 0.6.2
-github "LoopKit/dexcom-share-client-swift" "carthage-recursive"
-github "LoopKit/G4ShareSpy" "fix-cartfile"
-github "ps2/rileylink_ios" "dev"
+github "dm61/dexcom-share-client-swift" "carthage-recursive"
+github "dm61/G4ShareSpy" "fix-cartfile"
+github "dm61/rileylink_ios" "dev"
 github "LoopKit/Amplitude-iOS" "decreepify"
