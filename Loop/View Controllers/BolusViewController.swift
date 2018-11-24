@@ -102,6 +102,24 @@ final class BolusViewController: UITableViewController, IdentifiableClass, UITex
         }
     }
 
+    var recommendedSuperBolusDescription: String? = nil {
+        didSet {
+            recommendedSuperBolusAmountLabel?.text = recommendedSuperBolusDescription
+        }
+    }
+    
+    var superBolusRecommendation: BolusRecommendation? = nil {
+        didSet {
+            let sbStr: String
+            if let amount = superBolusRecommendation?.amount, let str = bolusUnitsFormatter.string(from: amount) {
+                sbStr = str + " U"
+            } else {
+                sbStr = "-"
+            }
+            recommendedSuperBolusDescription = String(format: NSLocalizedString("Super-bolus upper limit: %@", comment: "The string format describing super bolus amount. (1: localized super bolus amount description)"), sbStr)
+        }
+    }
+    
     var activeInsulin: Double? = nil {
         didSet {
             activeInsulinDescription = generateActiveInsulinDescription(activeInsulin: activeInsulin, pendingInsulin: pendingInsulin)
@@ -147,6 +165,12 @@ final class BolusViewController: UITableViewController, IdentifiableClass, UITex
         }
     }
 
+    @IBOutlet weak var recommendedSuperBolusAmountLabel: UILabel? {
+        didSet {
+            recommendedSuperBolusAmountLabel?.text = recommendedSuperBolusDescription
+        }
+    }
+    
     // MARK: - TableView Delegate
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {

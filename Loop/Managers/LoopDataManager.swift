@@ -174,15 +174,19 @@ final class LoopDataManager {
     }
     private var retrospectiveGlucoseDiscrepanciesSummed: [GlucoseChange]?
 
+    private var zeroTempEffect: [GlucoseEffect] = []
+    
     fileprivate var predictedGlucose: [GlucoseValue]? {
         didSet {
             recommendedTempBasal = nil
             recommendedBolus = nil
+            recommendedSuperBolus = nil
         }
     }
 
     fileprivate var recommendedTempBasal: (recommendation: TempBasalRecommendation, date: Date)?
     fileprivate var recommendedBolus: (recommendation: BolusRecommendation, date: Date)?
+    fileprivate var recommendedSuperBolus: (recommendation: BolusRecommendation, date: Date)?
 
     fileprivate var carbsOnBoard: CarbValue?
 
@@ -609,7 +613,7 @@ extension LoopDataManager {
     fileprivate func update() throws {
         dispatchPrecondition(condition: .onQueue(dataAccessQueue))
         let updateGroup = DispatchGroup()
-
+        
         // Fetch glucose effects as far back as we want to make retroactive analysis
         var latestGlucoseDate: Date?
         updateGroup.enter()
@@ -627,7 +631,7 @@ extension LoopDataManager {
 
         let earliestEffectDate = Date(timeIntervalSinceNow: .hours(-24))
         let nextEffectDate = insulinCounteractionEffects.last?.endDate ?? earliestEffectDate
-
+        
         if glucoseMomentumEffect == nil {
             updateGroup.enter()
             glucoseStore.getRecentMomentumEffect { (effects) -> Void in
@@ -707,7 +711,13 @@ extension LoopDataManager {
                 logger.error(error)
             }
         }
-
+        
+        do {
+            try updateZeroTempEffect()
+        } catch let error {
+            logger.error(error)
+        }        
+        
         if predictedGlucose == nil {
             do {
                 try updatePredictedGlucoseAndRecommendedBasalAndBolus()
@@ -790,6 +800,10 @@ extension LoopDataManager {
         if inputs.contains(.retrospection) {
             effects.append(self.retrospectiveGlucoseEffect)
         }
+        
+        if inputs.contains(.zeroTemp) {
+            effects.append(self.zeroTempEffect)
+        }
 
         var prediction = LoopMath.predictGlucose(startingAt: glucose, momentum: momentum, effects: effects)
 
@@ -838,6 +852,60 @@ extension LoopDataManager {
             totalRetrospectiveCorrection = standardRC.totalGlucoseCorrectionEffect
         }
     }
+    
+    /// Generates a glucose prediction effect of zero temping over duration of insulin action starting at current date
+    ///
+    /// - Throws: LoopError.configurationError
+    private func updateZeroTempEffect() throws {
+        dispatchPrecondition(condition: .onQueue(dataAccessQueue))
+        
+        // Get settings, otherwise clear effect and throw error
+        guard
+            let insulinModel = insulinModelSettings?.model,
+            let insulinSensitivity = insulinSensitivitySchedule,
+            let basalRateSchedule = basalRateSchedule
+        else {
+            zeroTempEffect = []
+            throw LoopError.configurationError(.generalSettings)
+        }
+        
+        let insulinActionDuration = insulinModel.effectDuration
+        
+        // Generate and test zero-temp bg effect
+        /*
+         let startDose = Date()
+         let endDose = startDose.addingTimeInterval(.hours(6))
+         let basalUnit = DoseUnit.unitsPerHour
+         // let zeroTempDose = DoseEntry(type: .tempBasal, startDate: startDose, endDate: endDose, value: 0.0, unit: basalUnit, scheduledBasalRate: HKQuantity(unit: HKUnit(from: "IU/hr"), doubleValue: 0.5))
+         let zeroTempDose = DoseEntry(type: .tempBasal, startDate: startDose, endDate: endDose, value: 0.0, unit: basalUnit)
+         let zeroTempDoses = zeroTempDose.annotated(with: basalRateSchedule!)
+         // let zeroTempDoses = [zeroTempDose]
+         let unit = HKUnit.milligramsPerDeciliter
+         var zeroTempUnits: Double = 0.0
+         for dose in zeroTempDoses {
+         zeroTempUnits += dose.netBasalUnits
+         }
+         NSLog("myLoop: %4.2f", zeroTempUnits)
+         let glucoseEffects = zeroTempDoses.glucoseEffects(insulinModel: insulinModelSettings!.model, insulinSensitivity: insulinSensitivitySchedule!).filterDateRange(startDose, endDose)
+         let effectsArray = glucoseEffects.map{ $0.quantity.doubleValue(for: unit) }
+         for effect in effectsArray {
+         NSLog("myLoop: %4.2f", effect)
+         }
+         */
+        
+        // use the new LoopKit method tempBasalGlucoseEffects to generate zero temp effects
+        let startZeroTempDose = Date()
+        let endZeroTempDose = startZeroTempDose.addingTimeInterval(insulinActionDuration)
+        let zeroTemp = DoseEntry(type: .tempBasal, startDate: startZeroTempDose, endDate: endZeroTempDose, value: 0.0, unit: DoseUnit.unitsPerHour)
+        zeroTempEffect = zeroTemp.tempBasalGlucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivity, basalRateSchedule: basalRateSchedule).filterDateRange(startZeroTempDose, endZeroTempDose)
+        
+        //let unit = HKUnit.milligramsPerDeciliter
+        //let eventualGlucoseEffect = testGlucoseEffects.last?.quantity.doubleValue(for: unit)
+        //let testEffectsArray = testGlucoseEffects.map{ $0.quantity.doubleValue(for: unit) }
+        //NSLog("myLoop: eventual zero-temping glucose effect: %4.2f", eventualGlucoseEffect ?? 0.0)
+        
+    }
+
 
     /// Runs the glucose prediction on the latest effect data.
     ///
@@ -907,6 +975,7 @@ extension LoopDataManager {
             // successful in any case.
             recommendedBolus = nil
             recommendedTempBasal = nil
+            recommendedSuperBolus = nil
             return
         }
         
@@ -937,6 +1006,23 @@ extension LoopDataManager {
             maxBolus: maxBolus
         )
         recommendedBolus = (recommendation: recommendation, date: startDate)
+        
+        var effectsIncludingZeroTemping = settings.enabledEffects
+        effectsIncludingZeroTemping.insert(.zeroTemp)
+        let predictedGlucoseWithZeroTemp = try predictGlucose(using: effectsIncludingZeroTemping)
+        let maximumSuperBolus = predictedGlucoseWithZeroTemp.recommendedBolus(
+            to: glucoseTargetRange,
+            suspendThreshold: settings.suspendThreshold?.quantity,
+            sensitivity: insulinSensitivity,
+            model: model,
+            pendingInsulin: pendingInsulin,
+            maxBolus: maxBolus
+        )
+        let superBolusAggressiveness = 0.5
+        let amount = max(superBolusAggressiveness * (maximumSuperBolus.amount - maximumSuperBolus.pendingInsulin), 0.0)
+        let superBolus: BolusRecommendation = BolusRecommendation(amount: amount, pendingInsulin: 0.0)
+        recommendedSuperBolus = (recommendation: superBolus, date: startDate)
+
     }
 
     /// *This method should only be called from the `dataAccessQueue`*
@@ -1011,6 +1097,8 @@ protocol LoopState {
     var recommendedTempBasal: (recommendation: TempBasalRecommendation, date: Date)? { get }
 
     var recommendedBolus: (recommendation: BolusRecommendation, date: Date)? { get }
+    
+    var recommendedSuperBolus: (recommendation: BolusRecommendation, date: Date)? { get }
 
     /// The difference in predicted vs actual glucose over a recent period
     var retrospectiveGlucoseDiscrepancies: [GlucoseChange]? { get }
@@ -1069,6 +1157,11 @@ extension LoopDataManager {
         var recommendedBolus: (recommendation: BolusRecommendation, date: Date)? {
             dispatchPrecondition(condition: .onQueue(loopDataManager.dataAccessQueue))
             return loopDataManager.recommendedBolus
+        }
+        
+        var recommendedSuperBolus: (recommendation: BolusRecommendation, date: Date)? {
+            dispatchPrecondition(condition: .onQueue(loopDataManager.dataAccessQueue))
+            return loopDataManager.recommendedSuperBolus
         }
 
         var retrospectiveGlucoseDiscrepancies: [GlucoseChange]? {
@@ -1162,6 +1255,8 @@ extension LoopDataManager {
                 "glucoseMomentumEffect: \(manager.glucoseMomentumEffect ?? [])",
                 "",
                 "retrospectiveGlucoseEffect: \(manager.retrospectiveGlucoseEffect)",
+                "",
+                "zeroTempEffect: \(manager.zeroTempEffect)",
                 "",
                 "recommendedTempBasal: \(String(describing: state.recommendedTempBasal))",
                 "recommendedBolus: \(String(describing: state.recommendedBolus))",

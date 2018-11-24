@@ -23,6 +23,8 @@ extension BolusViewController {
                 bolusRecommendation = state.recommendedBolus?.recommendation
             }
 
+            let superBolusRecommendation = state.recommendedSuperBolus?.recommendation
+
             manager.doseStore.insulinOnBoard(at: Date()) { (result) in
                 let activeInsulin: Double?
 
@@ -42,6 +44,7 @@ extension BolusViewController {
                     self.activeInsulin = activeInsulin
                     self.activeCarbohydrates = activeCarbohydrates
                     self.bolusRecommendation = bolusRecommendation
+                    self.superBolusRecommendation = superBolusRecommendation
                 }
             }
         }

@@ -364,16 +364,17 @@ extension Collection where Element == GlucoseValue {
             sensitivity: sensitivity.quantity(at: date),
             model: model
         )
-
+        
         let scheduledBasalRate = basalRates.value(at: date)
-        var maxBasalRate = maxBasalRate
-
+        let maxBasalRate = maxBasalRate
+        /* dm61 allow temps below target range
         // TODO: Allow `highBasalThreshold` to be a configurable setting
         if case .aboveRange(min: let min, correcting: _, minTarget: let highBasalThreshold, units: _)? = correction,
             min.quantity < highBasalThreshold
         {
             maxBasalRate = scheduledBasalRate
         }
+        */
 
         let temp = correction?.asTempBasal(
             scheduledBasalRate: scheduledBasalRate,
