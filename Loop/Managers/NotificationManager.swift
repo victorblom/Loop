@@ -239,21 +239,21 @@ struct NotificationManager {
     static func sendCarbCorrectionNotification(_ grams: Int, _ lowPredictedIn: TimeInterval?) {
         let notification = UNMutableNotificationContent()
         
-        notification.title = NSLocalizedString("Recommended Carb Correction:", comment: "The notification title for carb correction")
+        notification.title = NSLocalizedString("Carb Correction", comment: "The notification title for carb correction")
         
         let gramsString = NumberFormatter.localizedString(from: NSNumber(value: grams), number: .none)
         
         let intervalFormatter = DateComponentsFormatter()
         intervalFormatter.allowedUnits = [.hour, .minute]
-        intervalFormatter.maximumUnitCount = 1
+        intervalFormatter.maximumUnitCount = 2
         intervalFormatter.unitsStyle = .full
         intervalFormatter.includesApproximationPhrase = true
-        intervalFormatter.includesTimeRemainingPhrase = true
+        intervalFormatter.includesTimeRemainingPhrase = false
         
         if let lowPredictedIn = lowPredictedIn, let timeString = intervalFormatter.string(from: lowPredictedIn) {
-            notification.body = String(format: NSLocalizedString("%1$@ g, low predicted in %2$@", comment: "Carb correction with time remaining to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)"), gramsString, timeString)
+            notification.body = String(format: NSLocalizedString("Recommended: %1$@ g, Predicted Low in %2$@", comment: "Carb correction with time remaining to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)"), gramsString, timeString)
         } else {
-            notification.body = String(format: NSLocalizedString("%1$@ g", comment: "Carb correction alert format string. (1: Recommended correction grams)"), gramsString)
+            notification.body = String(format: NSLocalizedString("Recommended: %1$@ g", comment: "Carb correction alert format string. (1: Recommended correction grams)"), gramsString)
         }
         
         notification.sound = UNNotificationSound.default()
