@@ -37,6 +37,8 @@ final class LoopDataManager {
     private let standardRC: StandardRetrospectiveCorrection
 
     private let logger: CategoryLogger
+    
+    private var lastCarbCorrectionNotificationDate: Date?
 
     // References to registered notification center observers
     private var notificationObservers: [Any] = []
@@ -725,6 +727,42 @@ extension LoopDataManager {
                 logger.error(error)
 
                 throw error
+            }
+        }
+        
+        // wip carb correction recommendation
+        var effectsIncludingZeroTemping = settings.enabledEffects
+        effectsIncludingZeroTemping.insert(.zeroTemp)
+        if let correction = totalRetrospectiveCorrection?.doubleValue(for: .milligramsPerDeciliter) {
+            if correction < 0.0 {
+                effectsIncludingZeroTemping.remove(.retrospection)
+            }
+        }
+        let predictedGlucoseForCarbCorrection = try predictGlucose(using: effectsIncludingZeroTemping)
+        let startDate = Date().addingTimeInterval(.hours(1))
+        let endDate = startDate.addingTimeInterval(.hours(6))
+        let relevantPredictedGlucose = predictedGlucoseForCarbCorrection.filter{ $0.startDate > startDate && $0.startDate < endDate }
+        let suspendThreshold = settings.suspendThreshold?.quantity.doubleValue(for: .milligramsPerDeciliter) ?? 55.0
+        let relevantPredictedGlucoseArray = relevantPredictedGlucose.map{ $0.quantity.doubleValue(for: .milligramsPerDeciliter) }
+        let correctionGlucoseArray = relevantPredictedGlucoseArray.map{ suspendThreshold - $0 }
+        if let needsCarbCorrection = correctionGlucoseArray.max(),
+            let sensitivity = insulinSensitivitySchedule?.averageValue(),
+            let carbRatio = carbRatioSchedule?.averageValue() {
+            let carbsRequired = Int(ceil(max(needsCarbCorrection * carbRatio / sensitivity, 0.0)))
+            NSLog("Carb correction required: %4.2f", carbsRequired)
+            if carbsRequired > 1 {
+                let currentDate = Date()
+                if let sinceLastNotification = lastCarbCorrectionNotificationDate?.addingTimeInterval(.minutes(4)) {
+                    if( currentDate > sinceLastNotification ) {
+                        NotificationManager.sendCarbCorrectionNotification(carbsRequired, nil)
+                        lastCarbCorrectionNotificationDate = currentDate
+                    }
+                } else {
+                    NotificationManager.sendCarbCorrectionNotification(carbsRequired, nil)
+                    lastCarbCorrectionNotificationDate = currentDate
+                }
+            } else {
+                NotificationManager.clearCarbCorrectionNotification()
             }
         }
     }

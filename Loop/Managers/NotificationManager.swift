@@ -18,6 +18,7 @@ struct NotificationManager {
         case pumpBatteryLow
         case pumpReservoirEmpty
         case pumpReservoirLow
+        case carbCorrectionRecommended
     }
 
     enum Action: String {
@@ -233,5 +234,41 @@ struct NotificationManager {
 
     static func clearPumpReservoirNotification() {
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [Category.pumpReservoirLow.rawValue])
+    }
+    
+    static func sendCarbCorrectionNotification(_ grams: Int, _ lowPredictedIn: TimeInterval?) {
+        let notification = UNMutableNotificationContent()
+        
+        notification.title = NSLocalizedString("Recommended Carb Correction:", comment: "The notification title for carb correction")
+        
+        let gramsString = NumberFormatter.localizedString(from: NSNumber(value: grams), number: .none)
+        
+        let intervalFormatter = DateComponentsFormatter()
+        intervalFormatter.allowedUnits = [.hour, .minute]
+        intervalFormatter.maximumUnitCount = 1
+        intervalFormatter.unitsStyle = .full
+        intervalFormatter.includesApproximationPhrase = true
+        intervalFormatter.includesTimeRemainingPhrase = true
+        
+        if let lowPredictedIn = lowPredictedIn, let timeString = intervalFormatter.string(from: lowPredictedIn) {
+            notification.body = String(format: NSLocalizedString("%1$@ g, low predicted in %2$@", comment: "Carb correction with time remaining to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)"), gramsString, timeString)
+        } else {
+            notification.body = String(format: NSLocalizedString("%1$@ g", comment: "Carb correction alert format string. (1: Recommended correction grams)"), gramsString)
+        }
+        
+        notification.sound = UNNotificationSound.default()
+        notification.categoryIdentifier = Category.carbCorrectionRecommended.rawValue
+        
+        let request = UNNotificationRequest(
+            identifier: Category.carbCorrectionRecommended.rawValue,
+            content: notification,
+            trigger: nil
+        )
+        
+        UNUserNotificationCenter.current().add(request)
+    }
+    
+    static func clearCarbCorrectionNotification() {
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [Category.carbCorrectionRecommended.rawValue])
     }
 }

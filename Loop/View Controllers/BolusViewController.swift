@@ -116,7 +116,7 @@ final class BolusViewController: UITableViewController, IdentifiableClass, UITex
             } else {
                 sbStr = "-"
             }
-            recommendedSuperBolusDescription = String(format: NSLocalizedString("Super-bolus upper limit: %@", comment: "The string format describing super bolus amount. (1: localized super bolus amount description)"), sbStr)
+            recommendedSuperBolusDescription = String(format: NSLocalizedString("Recommended Super Bolus: %@", comment: "The string format describing super bolus amount. (1: localized super bolus amount description)"), sbStr)
         }
     }
     
