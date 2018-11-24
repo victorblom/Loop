@@ -1009,6 +1009,11 @@ extension LoopDataManager {
         
         var effectsIncludingZeroTemping = settings.enabledEffects
         effectsIncludingZeroTemping.insert(.zeroTemp)
+        if let correction = totalRetrospectiveCorrection?.doubleValue(for: .milligramsPerDeciliter) {
+            if correction > 0.0 {
+                effectsIncludingZeroTemping.remove(.retrospection)
+            }
+        }
         let predictedGlucoseWithZeroTemp = try predictGlucose(using: effectsIncludingZeroTemping)
         let maximumSuperBolus = predictedGlucoseWithZeroTemp.recommendedBolus(
             to: glucoseTargetRange,
