@@ -1019,8 +1019,8 @@ extension LoopDataManager {
             maxBolus: maxBolus
         )
         let superBolusAggressiveness = 0.5
-        let amount = max(superBolusAggressiveness * (maximumSuperBolus.amount - maximumSuperBolus.pendingInsulin), 0.0)
-        let superBolus: BolusRecommendation = BolusRecommendation(amount: amount, pendingInsulin: 0.0)
+        let superBolusAmount = recommendation.amount + max(superBolusAggressiveness * (maximumSuperBolus.amount - recommendation.amount), 0.0)
+        let superBolus: BolusRecommendation = BolusRecommendation(amount: superBolusAmount, pendingInsulin: maximumSuperBolus.pendingInsulin)
         recommendedSuperBolus = (recommendation: superBolus, date: startDate)
 
     }
