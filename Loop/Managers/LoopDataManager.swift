@@ -730,46 +730,55 @@ extension LoopDataManager {
             }
         }
         
-        // wip carb correction recommendation
-        var effectsIncludingZeroTemping = settings.enabledEffects
-        effectsIncludingZeroTemping.insert(.zeroTemp)
-        if let correction = totalRetrospectiveCorrection?.doubleValue(for: .milligramsPerDeciliter) {
-            if correction < 0.0 {
-                effectsIncludingZeroTemping.remove(.retrospection)
-            }
-        }
-        let predictedGlucoseForCarbCorrection = try predictGlucose(using: effectsIncludingZeroTemping)
-        let startDate = Date().addingTimeInterval(.hours(1))
-        let endDate = startDate.addingTimeInterval(.hours(6))
-        let observedPredictedGlucose = predictedGlucoseForCarbCorrection.filter{ $0.startDate > startDate && $0.startDate < endDate }
-        let suspendThreshold = settings.suspendThreshold?.quantity.doubleValue(for: .milligramsPerDeciliter) ?? 55.0
-        let relevantPredictedGlucoseArray = observedPredictedGlucose.map{ $0.quantity.doubleValue(for: .milligramsPerDeciliter) }
-        let correctionGlucoseArray = relevantPredictedGlucoseArray.map{ suspendThreshold - $0 }
-        if let needsCarbCorrection = correctionGlucoseArray.max(),
+        
+        // wip carb correction recommendation, do only if current temp is zero and settings are available
+        if let lastTemp = lastTempBasal?.unitsPerHour,
+            let insulinActionDuration = insulinModelSettings?.model.effectDuration,
+            let suspendThreshold = settings.suspendThreshold?.quantity.doubleValue(for: .milligramsPerDeciliter),
             let sensitivity = insulinSensitivitySchedule?.averageValue(),
             let carbRatio = carbRatioSchedule?.averageValue() {
-            let carbsRequired = Int(ceil(max(needsCarbCorrection * carbRatio / sensitivity, 0.0)))
-            NSLog("Carb correction required: %d", carbsRequired)
-            if carbsRequired > 1 {
-                let currentDate = Date()
-                var lowGlucose: GlucoseValue?
-                var timeToLow: TimeInterval?
-                lowGlucose = observedPredictedGlucose.first( where:
-                    {$0.quantity.doubleValue(for: .milligramsPerDeciliter) < suspendThreshold} )
-                if let lowGlucoseDate = lowGlucose?.startDate {
-                    timeToLow = lowGlucoseDate.timeIntervalSince(currentDate)
-                }
-                if let sinceLastNotification = lastCarbCorrectionNotificationDate?.addingTimeInterval(.minutes(4)) {
-                    if( currentDate > sinceLastNotification ) {
-                        NotificationManager.sendCarbCorrectionNotification(carbsRequired, timeToLow)
-                        lastCarbCorrectionNotificationDate = currentDate
+
+            if lastTemp == 0.0 {
+                let carbsRequiredThreshold: Int = 1
+                let carbCorrectionSkip: TimeInterval = TimeInterval(.minutes(45))
+                var effectsIncludingZeroTemping = settings.enabledEffects
+                effectsIncludingZeroTemping.insert(.zeroTemp)
+                if let correction = totalRetrospectiveCorrection?.doubleValue(for: .milligramsPerDeciliter) {
+                    if correction < 0.0 {
+                        effectsIncludingZeroTemping.remove(.retrospection)
                     }
-                } else {
-                    NotificationManager.sendCarbCorrectionNotification(carbsRequired, timeToLow)
-                    lastCarbCorrectionNotificationDate = currentDate
                 }
-            } else {
-                NotificationManager.clearCarbCorrectionNotification()
+                let predictedGlucoseForCarbCorrection = try predictGlucose(using: effectsIncludingZeroTemping)
+                if let startDate = predictedGlucoseForCarbCorrection.first?.startDate.addingTimeInterval(carbCorrectionSkip) {
+                    let endDate = startDate.addingTimeInterval(insulinActionDuration)
+                    let observedPredictedGlucose = predictedGlucoseForCarbCorrection.filter{ $0.startDate >= startDate && $0.startDate <= endDate }
+                    let observedPredictedGlucoseArray = observedPredictedGlucose.map{ $0.quantity.doubleValue(for: .milligramsPerDeciliter) }
+                    let carbCorrectionGlucose = observedPredictedGlucoseArray.map{ suspendThreshold - $0 }
+                    if let maxCarbCorrectionGlucose = carbCorrectionGlucose.max() {
+                        let carbsRequired = Int(ceil(max(maxCarbCorrectionGlucose * carbRatio / sensitivity, 0.0)))
+                        if carbsRequired > carbsRequiredThreshold {
+                            let currentDate = Date()
+                            var lowGlucose: GlucoseValue?
+                            var timeToLow: TimeInterval?
+                            lowGlucose = predictedGlucoseForCarbCorrection.first( where:
+                                {$0.quantity.doubleValue(for: .milligramsPerDeciliter) < suspendThreshold} )
+                            if let lowGlucoseDate = lowGlucose?.startDate {
+                                timeToLow = lowGlucoseDate.timeIntervalSince(currentDate)
+                            }
+                            if let sinceLastNotification = lastCarbCorrectionNotificationDate?.addingTimeInterval(.minutes(4)) {
+                                if( currentDate > sinceLastNotification ) {
+                                    NotificationManager.sendCarbCorrectionNotification(carbsRequired, timeToLow)
+                                    lastCarbCorrectionNotificationDate = currentDate
+                                }
+                            } else {
+                                NotificationManager.sendCarbCorrectionNotification(carbsRequired, timeToLow)
+                                lastCarbCorrectionNotificationDate = currentDate
+                            }
+                        } else {
+                            NotificationManager.clearCarbCorrectionNotification()
+                        }
+                    }
+                }
             }
         }
     }
