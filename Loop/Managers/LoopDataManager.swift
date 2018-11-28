@@ -38,7 +38,7 @@ final class LoopDataManager {
 
     private let logger: CategoryLogger
     
-    private var lastCarbCorrectionNotificationDate: Date?
+    var suggestedCarbCorrection: Int?
 
     // References to registered notification center observers
     private var notificationObservers: [Any] = []
@@ -136,6 +136,7 @@ final class LoopDataManager {
     var settings: LoopSettings {
         didSet {
             UserDefaults.appGroup.loopSettings = settings
+            suggestedCarbCorrection = nil
             notify(forChange: .preferences)
             AnalyticsManager.shared.didChangeLoopSettings(from: oldValue, to: settings)
         }
@@ -151,6 +152,7 @@ final class LoopDataManager {
 
             // Carb data may be back-dated, so re-calculate the retrospective glucose.
             retrospectiveGlucoseDiscrepancies = nil
+            suggestedCarbCorrection = nil
         }
     }
     private var insulinEffect: [GlucoseEffect]? {
@@ -730,59 +732,13 @@ extension LoopDataManager {
             }
         }
         
-        
-        // wip carb correction recommendation, do only if current temp is zero and settings are available
-        if let lastTemp = lastTempBasal?.unitsPerHour,
-            let insulinActionDuration = insulinModelSettings?.model.effectDuration,
-            let suspendThreshold = settings.suspendThreshold?.quantity.doubleValue(for: .milligramsPerDeciliter),
-            let sensitivity = insulinSensitivitySchedule?.averageValue(),
-            let carbRatio = carbRatioSchedule?.averageValue() {
-
-            if lastTemp == 0.0 {
-                let carbsRequiredThreshold: Int = 1
-                let carbCorrectionSkip: TimeInterval = TimeInterval(.minutes(45))
-                var effectsIncludingZeroTemping = settings.enabledEffects
-                effectsIncludingZeroTemping.insert(.zeroTemp)
-                if let correction = totalRetrospectiveCorrection?.doubleValue(for: .milligramsPerDeciliter) {
-                    if correction < 0.0 {
-                        effectsIncludingZeroTemping.remove(.retrospection)
-                    }
-                }
-                let predictedGlucoseForCarbCorrection = try predictGlucose(using: effectsIncludingZeroTemping)
-                if let startDate = predictedGlucoseForCarbCorrection.first?.startDate.addingTimeInterval(carbCorrectionSkip) {
-                    let endDate = startDate.addingTimeInterval(insulinActionDuration)
-                    let observedPredictedGlucose = predictedGlucoseForCarbCorrection.filter{ $0.startDate >= startDate && $0.startDate <= endDate }
-                    let observedPredictedGlucoseArray = observedPredictedGlucose.map{ $0.quantity.doubleValue(for: .milligramsPerDeciliter) }
-                    let carbCorrectionGlucose = observedPredictedGlucoseArray.map{ suspendThreshold - $0 }
-                    if let maxCarbCorrectionGlucose = carbCorrectionGlucose.max() {
-                        let carbsRequired = Int(ceil(max(maxCarbCorrectionGlucose * carbRatio / sensitivity, 0.0)))
-                        if carbsRequired > carbsRequiredThreshold {
-                            let currentDate = Date()
-                            var lowGlucose: GlucoseValue?
-                            var timeToLow: TimeInterval?
-                            lowGlucose = predictedGlucoseForCarbCorrection.first( where:
-                                {$0.quantity.doubleValue(for: .milligramsPerDeciliter) < suspendThreshold} )
-                            if let lowGlucoseDate = lowGlucose?.startDate {
-                                timeToLow = lowGlucoseDate.timeIntervalSince(currentDate)
-                            }
-                            if let sinceLastNotification = lastCarbCorrectionNotificationDate?.addingTimeInterval(.minutes(4)) {
-                                if( currentDate > sinceLastNotification ) {
-                                    NotificationManager.sendCarbCorrectionNotification(carbsRequired, timeToLow)
-                                    lastCarbCorrectionNotificationDate = currentDate
-                                }
-                            } else {
-                                NotificationManager.sendCarbCorrectionNotification(carbsRequired, timeToLow)
-                                lastCarbCorrectionNotificationDate = currentDate
-                            }
-                        } else {
-                            NotificationManager.clearCarbCorrectionNotification()
-                        }
-                    }
-                }
-            }
+        // wip carb correction recommendation, do only if data has been updated
+        if suggestedCarbCorrection == nil {
+            try updateCarbCorrection()
         }
-    }
 
+    }
+    
     private func notify(forChange context: LoopUpdateContext) {
         NotificationCenter.default.post(name: .LoopDataUpdated,
             object: self,
@@ -905,6 +861,77 @@ extension LoopDataManager {
             retrospectiveGlucoseEffect = standardRC.updateRetrospectiveCorrectionEffect(glucose, retrospectiveGlucoseDiscrepanciesSummed)
             totalRetrospectiveCorrection = standardRC.totalGlucoseCorrectionEffect
         }
+    }
+    
+    // wip carb correction recommendation, do only if settings are available
+    private func updateCarbCorrection() throws {
+        dispatchPrecondition(condition: .onQueue(dataAccessQueue))
+        
+        // Get settings, otherwise throw error
+        guard
+            let insulinActionDuration = insulinModelSettings?.model.effectDuration,
+            let suspendThreshold = settings.suspendThreshold?.quantity.doubleValue(for: .milligramsPerDeciliter),
+            let sensitivity = insulinSensitivitySchedule?.averageValue(),
+            let carbRatio = carbRatioSchedule?.averageValue()
+            else {
+                throw LoopError.invalidData(details: "Settings not available, updateCarbCorrection failed")
+        }
+        
+        NSLog("myLoop: calculating carb correction")
+        let carbCorrectionAbsorptionTime: TimeInterval = carbStore.defaultAbsorptionTimes.fast * carbStore.absorptionTimeOverrun
+        let carbCorrectionThreshold: Int = 2 // do not bother with carb correction notifications below this value
+        let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
+        let carbCorrectionSkipInterval: TimeInterval = 0.5 * carbCorrectionAbsorptionTime
+        var effectsIncludingZeroTemping = settings.enabledEffects
+        effectsIncludingZeroTemping.insert(.zeroTemp)
+        if let retrospectiveCorrection = totalRetrospectiveCorrection?.doubleValue(for: .milligramsPerDeciliter) {
+            if retrospectiveCorrection < 0.0 {
+                effectsIncludingZeroTemping.remove(.retrospection)
+            }
+        }
+        do {
+            let predictedGlucoseForCarbCorrection = try predictGlucose(using: effectsIncludingZeroTemping)
+            if let startDate = predictedGlucoseForCarbCorrection.first?.startDate.addingTimeInterval(carbCorrectionSkipInterval) {
+                NSLog("myLoop: glucose prediction for carb correction found")
+                let endDate = startDate.addingTimeInterval(insulinActionDuration)
+                let predictedGlucoseNeedCorrection = predictedGlucoseForCarbCorrection.filter{ $0.startDate >= startDate && $0.startDate <= endDate && $0.quantity.doubleValue(for: .milligramsPerDeciliter) < suspendThreshold}
+                if predictedGlucoseNeedCorrection.count > 0 {
+                    NSLog("myLoop: glucose crossing below suspend threshold")
+                    var carbCorrection = 0
+                    let currentDate = Date()
+                    for glucose in predictedGlucoseNeedCorrection {
+                        let glucoseTime = glucose.startDate.timeIntervalSince(currentDate)
+                        let absorbedFraction = min(1.0, glucoseTime.minutes / carbCorrectionAbsorptionTime.minutes)
+                        let required = (( suspendThreshold - glucose.quantity.doubleValue(for: .milligramsPerDeciliter)) / absorbedFraction) * carbRatio / sensitivity
+                        let requiredRounded = Int(ceil(carbCorrectionFactor * required))
+                        if requiredRounded > carbCorrection {
+                            carbCorrection = requiredRounded
+                        }
+                    }
+                    suggestedCarbCorrection = carbCorrection
+                    if carbCorrection >= carbCorrectionThreshold {
+                        NSLog("myLoop: carb correction: %d", carbCorrection)
+                        if let lowGlucose = predictedGlucoseForCarbCorrection.first( where:
+                            {$0.quantity.doubleValue(for: .milligramsPerDeciliter) < suspendThreshold} ) {
+                            let timeToLow = lowGlucose.startDate.timeIntervalSince(currentDate)
+                            NotificationManager.sendCarbCorrectionNotification(carbCorrection, timeToLow)
+                        } else {
+                            NotificationManager.sendCarbCorrectionNotification(carbCorrection, nil)
+                        }
+                    } else {
+                        NSLog("myLoop: carb correction below threshold, cleared")
+                        NotificationManager.clearCarbCorrectionNotification()
+                    }
+                } else {
+                    NSLog("myLoop: no carb correction needed, cleared")
+                    suggestedCarbCorrection = 0
+                    NotificationManager.clearCarbCorrectionNotification()
+                }
+            }
+        } catch {
+            throw LoopError.invalidData(details: "predictedGlucose failed, updateCarbCorrection failed")
+        }
+        return
     }
     
     /// Generates a glucose prediction effect of zero temping over duration of insulin action starting at current date

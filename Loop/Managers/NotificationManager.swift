@@ -245,16 +245,16 @@ struct NotificationManager {
         
         let intervalFormatter = DateComponentsFormatter()
         intervalFormatter.allowedUnits = [.hour, .minute]
-        intervalFormatter.maximumUnitCount = 2
+        intervalFormatter.maximumUnitCount = 1
         intervalFormatter.unitsStyle = .full
         intervalFormatter.includesApproximationPhrase = false
         intervalFormatter.includesTimeRemainingPhrase = false
         
         if let lowPredictedIn = lowPredictedIn, let timeString = intervalFormatter.string(from: lowPredictedIn) {
-            if lowPredictedIn < 15.0 {
-                notification.body = String(format: NSLocalizedString("Recommended %1$@ g to Treat Low Now", comment: "Carb correction for imminent low alert format string. (1: Recommended correction grams)"), gramsString)
+            if lowPredictedIn < TimeInterval(minutes: 15) {
+                notification.body = String(format: NSLocalizedString("Recommended %1$@ g to Treat Low", comment: "Carb correction for imminent low alert format string. (1: Recommended correction grams)"), gramsString)
             } else {
-                notification.body = String(format: NSLocalizedString("Recommended %1$@ g to Treat Low in %2$@", comment: "Carb correction with time to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)"), gramsString, timeString)
+                notification.body = String(format: NSLocalizedString("Recommended %1$@ g to Treat Low Predicted in %2$@", comment: "Carb correction with time to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)"), gramsString, timeString)
             }
         } else {
             notification.body = String(format: NSLocalizedString("Recommended: %1$@ g", comment: "Carb correction alert format string. (1: Recommended correction grams)"), gramsString)
@@ -274,7 +274,16 @@ struct NotificationManager {
     }
     
     static func clearCarbCorrectionNotification() {
-        UIApplication.shared.applicationIconBadgeNumber = 0
+        let notification = UNMutableNotificationContent()
+        notification.categoryIdentifier = Category.carbCorrectionRecommended.rawValue
+        notification.badge = NSNumber(value: 0)
+        notification.sound = nil
+        let clearBadge = UNNotificationRequest(
+            identifier: Category.carbCorrectionRecommended.rawValue,
+            content: notification,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(clearBadge)
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [Category.carbCorrectionRecommended.rawValue])
     }
 }
