@@ -252,7 +252,7 @@ struct NotificationManager {
         
         if let lowPredictedIn = lowPredictedIn, let timeString = intervalFormatter.string(from: lowPredictedIn) {
             if lowPredictedIn < TimeInterval(minutes: 15) {
-                notification.body = String(format: NSLocalizedString("Recommended %1$@ g to Treat Low", comment: "Carb correction for imminent low alert format string. (1: Recommended correction grams)"), gramsString)
+                notification.body = String(format: NSLocalizedString("Recommended %1$@ g", comment: "Carb correction for imminent low alert format string. (1: Recommended correction grams)"), gramsString)
             } else {
                 notification.body = String(format: NSLocalizedString("Recommended %1$@ g to Treat Low Predicted in %2$@", comment: "Carb correction with time to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)"), gramsString, timeString)
             }
