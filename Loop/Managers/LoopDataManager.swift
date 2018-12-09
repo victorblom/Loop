@@ -152,7 +152,7 @@ final class LoopDataManager {
 
             // Carb data may be back-dated, so re-calculate the retrospective glucose.
             retrospectiveGlucoseDiscrepancies = nil
-            suggestedCarbCorrection = nil
+            // wip suggestedCarbCorrection = nil
         }
     }
     private var insulinEffect: [GlucoseEffect]? {
@@ -425,6 +425,7 @@ extension LoopDataManager {
                         // Prune back any counteraction effects for recomputation
                         self.insulinCounteractionEffects = self.insulinCounteractionEffects.filter { $0.endDate < endDate }
                     }
+                    self.suggestedCarbCorrection = nil
 
                     completion?(.success(samples))
                 case .failure(let error):
@@ -514,6 +515,7 @@ extension LoopDataManager {
                 if error == nil {
                     self.insulinEffect = nil
                     // Expire any bolus values now represented in the insulin data
+                    // dm61 wip: this is not a realiable approach to expiring a recent bolus, it may lead to temporarily double-counting
                     if let bolusDate = self.lastRequestedBolus?.date, bolusDate.timeIntervalSinceNow < TimeInterval(minutes: -5) {
                         self.lastRequestedBolus = nil
                     }
@@ -542,6 +544,7 @@ extension LoopDataManager {
                 self.dataAccessQueue.async {
                     self.insulinEffect = nil
                     // Expire any bolus values now represented in the insulin data
+                    // wip this may not be a reliable way of expiring bolus
                     if areStoredValuesContinuous, let bolusDate = self.lastRequestedBolus?.date, bolusDate.timeIntervalSinceNow < TimeInterval(minutes: -5) {
                         self.lastRequestedBolus = nil
                     }
@@ -706,20 +709,6 @@ extension LoopDataManager {
             }
         }
         
-        /* var staticCarbsOnBoard: CarbValue?
-        updateGroup.enter()
-        carbStore.carbsOnBoard(at: Date(), effectVelocities: nil) { (result) in
-            switch result {
-            case .failure:
-                // Failure is expected when there is no carb data
-                staticCarbsOnBoard: CarbValue? = nil
-            case .success(let value):
-                staticCarbsOnBoard = value
-            }
-            updateGroup.leave()
-        }
-        NSLog("myLoop: static carbs on board: %4.2f",staticCarbsOnBoard?.quantity.doubleValue(for: .gram()) ?? 0.0) */
-
         _ = updateGroup.wait(timeout: .distantFuture)
 
         if retrospectiveGlucoseDiscrepancies == nil {
@@ -888,7 +877,57 @@ extension LoopDataManager {
             let sensitivity = insulinSensitivitySchedule?.averageValue(),
             let carbRatio = carbRatioSchedule?.averageValue()
             else {
+                self.suggestedCarbCorrection = nil
                 throw LoopError.invalidData(details: "Settings not available, updateCarbCorrection failed")
+        }
+        
+        guard let latestGlucose = glucoseStore.latestGlucose else {
+            // self.suggestedCarbCorrection = nil
+            throw LoopError.missingDataError(.glucose)
+        }
+        
+        guard let pumpStatusDate = doseStore.lastReservoirValue?.startDate else {
+            // self.suggestedCarbCorrection = nil
+            throw LoopError.missingDataError(.reservoir)
+        }
+        
+        let startDate = Date()
+        
+        guard startDate.timeIntervalSince(latestGlucose.startDate) <= settings.recencyInterval else {
+            // self.suggestedCarbCorrection = nil
+            throw LoopError.glucoseTooOld(date: latestGlucose.startDate)
+        }
+        
+        guard startDate.timeIntervalSince(pumpStatusDate) <= settings.recencyInterval else {
+            // self.suggestedCarbCorrection = nil
+            throw LoopError.pumpDataTooOld(date: pumpStatusDate)
+        }
+        
+        guard glucoseMomentumEffect != nil else {
+            // self.suggestedCarbCorrection = nil
+            throw LoopError.missingDataError(.momentumEffect)
+        }
+        
+        guard carbEffect != nil else {
+            // self.suggestedCarbCorrection = nil
+            throw LoopError.missingDataError(.carbEffect)
+        }
+        
+        guard insulinEffect != nil else {
+            // self.suggestedCarbCorrection = nil
+            throw LoopError.missingDataError(.insulinEffect)
+        }
+        
+        guard zeroTempEffect != [] else {
+            // self.suggestedCarbCorrection = nil
+            NSLog("myLoop: zeroTempEffect not available, skip updateCarbCorrection")
+            throw LoopError.invalidData(details: "zeroTempEffect not available, updateCarbCorrection failed")
+        }
+        
+        guard lastRequestedBolus == nil else {
+            // self.suggestedCarbCorrection = nil
+            NSLog("myLoop: pending bolus, skip updateCarbCorrection")
+            throw LoopError.invalidData(details: "pending bolus, skip updateCarbCorrection")
         }
         
         NSLog("myLoop: calculating carb correction")
@@ -898,12 +937,13 @@ extension LoopDataManager {
         let carbCorrectionSkipInterval: TimeInterval = 0.5 * carbCorrectionAbsorptionTime // ignore dips below suspend threshold within the initial skip interval
         var effectsIncludingZeroTemping = settings.enabledEffects
         effectsIncludingZeroTemping.insert(.zeroTemp) // include effect of zero temping
+        /*
         // exclude negative retrospective correction
         if let retrospectiveCorrection = totalRetrospectiveCorrection?.doubleValue(for: .milligramsPerDeciliter) {
             if retrospectiveCorrection < 0.0 {
                 effectsIncludingZeroTemping.remove(.retrospection)
             }
-        }
+        } */
         do {
             let predictedGlucoseForCarbCorrection = try predictGlucose(using: effectsIncludingZeroTemping)
             if let currentDate = predictedGlucoseForCarbCorrection.first?.startDate {
@@ -1109,11 +1149,12 @@ extension LoopDataManager {
                 
                 var effectsIncludingZeroTemping = settings.enabledEffects
                 effectsIncludingZeroTemping.insert(.zeroTemp)
+                /*
                 if let correction = totalRetrospectiveCorrection?.doubleValue(for: .milligramsPerDeciliter) {
                     if correction > 0.0 {
                         effectsIncludingZeroTemping.remove(.retrospection)
                     }
-                }
+                } */
                 let predictedGlucoseWithZeroTemp = try predictGlucose(using: effectsIncludingZeroTemping)
                 let maximumSuperBolus = predictedGlucoseWithZeroTemp.recommendedBolus(
                     to: glucoseTargetRange,
