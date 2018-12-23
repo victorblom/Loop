@@ -517,6 +517,7 @@ extension LoopDataManager {
                     // Expire any bolus values now represented in the insulin data
                     // dm61 wip: this is not a realiable approach to expiring a recent bolus, it may lead to temporarily double-counting
                     if let bolusDate = self.lastRequestedBolus?.date, bolusDate.timeIntervalSinceNow < TimeInterval(minutes: -5) {
+                        NSLog("myLoop: expiring recent bolus")
                         self.lastRequestedBolus = nil
                     }
                 }
@@ -932,7 +933,7 @@ extension LoopDataManager {
         
         NSLog("myLoop: calculating carb correction")
         let carbCorrectionAbsorptionTime: TimeInterval = carbStore.defaultAbsorptionTimes.fast * carbStore.absorptionTimeOverrun
-        let carbCorrectionThreshold: Int = 2 // do not bother with carb correction notifications below this value
+        let carbCorrectionThreshold: Int = 4 // do not bother with carb correction notifications below this value
         let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
         let carbCorrectionSkipInterval: TimeInterval = 0.5 * carbCorrectionAbsorptionTime // ignore dips below suspend threshold within the initial skip interval
         var effectsIncludingZeroTemping = settings.enabledEffects
@@ -974,8 +975,8 @@ extension LoopDataManager {
                             NotificationManager.sendCarbCorrectionNotification(carbCorrection, nil)
                         }
                     } else {
-                        NSLog("myLoop: carb correction below threshold, cleared")
-                        NotificationManager.clearCarbCorrectionNotification()
+                        NSLog("myLoop: carb correction below threshold, just set badge")
+                        NotificationManager.sendCarbCorrectionNotificationBadge(carbCorrection)
                     }
                 } else {
                     NSLog("myLoop: no carb correction needed, cleared")
