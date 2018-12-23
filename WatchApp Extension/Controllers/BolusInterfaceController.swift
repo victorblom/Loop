@@ -77,6 +77,8 @@ final class BolusInterfaceController: WKInterfaceController, IdentifiableClass {
 
     /// REC: 2.25 U
     @IBOutlet weak var recommendedValueLabel: WKInterfaceLabel!
+    //wip @IBOutlet weak var recommendedSuperBolusLabel: WKInterfaceLabel!
+
 
     override func awake(withContext context: Any?) {
         super.awake(withContext: context)
@@ -93,7 +95,7 @@ final class BolusInterfaceController: WKInterfaceController, IdentifiableClass {
                 maxBolusValue = recommendedBolus
             }
 
-            pickerValue = pickerValueFromBolusValue(recommendedBolus * 0.75)
+            pickerValue = pickerValueFromBolusValue(recommendedBolus * 1.00)
 
             if let recommendedBolus = context.recommendedBolus, let valueString = formatter.string(from: recommendedBolus) {
                 recommendedValueLabel.setText(String(format: NSLocalizedString("Rec: %@ U", comment: "The label and value showing the recommended bolus"), valueString).localizedUppercase)
