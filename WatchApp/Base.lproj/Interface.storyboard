@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder.WatchKit.Storyboard" version="3.0" toolsVersion="14313.18" targetRuntime="watchKit" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="rNf-Mh-tID">
+<document type="com.apple.InterfaceBuilder.WatchKit.Storyboard" version="3.0" toolsVersion="14460.31" targetRuntime="watchKit" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="rNf-Mh-tID">
     <device id="watch44" orientation="portrait">
         <adaptation id="fullscreen"/>
     </device>
     <dependencies>
         <deployment identifier="watchOS"/>
-        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="14283.14"/>
-        <plugIn identifier="com.apple.InterfaceBuilder.IBWatchKitPlugin" version="14238.10"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="14460.20"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBWatchKitPlugin" version="14460.16"/>
     </dependencies>
     <scenes>
         <!--AddCarbsInterfaceController-->
@@ -323,6 +323,10 @@
                                     <color key="textColor" red="1" green="0.58431372550000005" blue="0.0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                                     <fontDescription key="font" style="UICTFontTextStyleBody"/>
                                 </label>
+                                <label height="41" alignment="center" textAlignment="center" numberOfLines="2" id="0XZ-PV-rxB" userLabel="Recommended Super Bolus">
+                                    <color key="textColor" red="1" green="0.58431372550000005" blue="0.0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                    <fontDescription key="font" style="UICTFontTextStyleBody"/>
+                                </label>
                                 <group width="1" alignment="center" verticalAlignment="bottom" id="8jd-ZY-t1c">
                                     <items>
                                         <button width="1" height="40" alignment="left" title="Bolus" id="Qsq-p5-1J0">
@@ -342,6 +346,7 @@
                         </group>
                     </items>
                     <connections>
+                        <outlet property="recommendedSuperBolusLabel" destination="0XZ-PV-rxB" id="hYA-4U-ERz"/>
                         <outlet property="recommendedValueLabel" destination="lDp-Dk-msn" id="B0r-C8-lMN"/>
                         <outlet property="valueLabel" destination="mpK-zY-UvA" id="pM7-ih-eRu"/>
                     </connections>
