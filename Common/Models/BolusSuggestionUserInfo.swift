@@ -11,12 +11,10 @@ import Foundation
 
 struct BolusSuggestionUserInfo: RawRepresentable {
     let recommendedBolus: Double?
-    let recommendedSuperBolus: Double?
     var maxBolus: Double?
 
     init(recommendedBolus: Double?, recommendedSuperBolus: Double? = nil, maxBolus: Double? = nil) {
         self.recommendedBolus = recommendedBolus
-        self.recommendedSuperBolus = recommendedSuperBolus
         self.maxBolus = maxBolus
     }
 
@@ -34,7 +32,6 @@ struct BolusSuggestionUserInfo: RawRepresentable {
         }
 
         self.recommendedBolus = recommendedBolus
-        self.recommendedSuperBolus = rawValue["sb"] as? Double
         self.maxBolus = rawValue["mb"] as? Double
     }
 
@@ -45,7 +42,6 @@ struct BolusSuggestionUserInfo: RawRepresentable {
         ]
 
         raw["br"] = recommendedBolus
-        raw["sb"] = recommendedSuperBolus
         raw["mb"] = maxBolus
 
         return raw
