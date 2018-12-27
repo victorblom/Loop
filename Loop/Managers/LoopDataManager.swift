@@ -152,7 +152,6 @@ final class LoopDataManager {
 
             // Carb data may be back-dated, so re-calculate the retrospective glucose.
             retrospectiveGlucoseDiscrepancies = nil
-            // wip suggestedCarbCorrection = nil
         }
     }
     private var insulinEffect: [GlucoseEffect]? {
@@ -426,7 +425,6 @@ extension LoopDataManager {
                         // Prune back any counteraction effects for recomputation
                         self.insulinCounteractionEffects = self.insulinCounteractionEffects.filter { $0.endDate < endDate }
                     }
-                    // wip self.suggestedCarbCorrection = nil
 
                     completion?(.success(samples))
                 case .failure(let error):
@@ -736,7 +734,7 @@ extension LoopDataManager {
             }
         }
         
-        // wip carb correction recommendation, do only if data has been updated
+        // carb correction recommendation, do only if data has been updated
         if suggestedCarbCorrection == nil {
             try updateCarbCorrection()
         }
@@ -867,7 +865,7 @@ extension LoopDataManager {
         }
     }
     
-    // wip carb correction recommendation, do only if settings are available
+    // carb correction recommendation, do only if settings are available
     private func updateCarbCorrection() throws {
         dispatchPrecondition(condition: .onQueue(dataAccessQueue))
         
