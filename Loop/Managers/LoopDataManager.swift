@@ -208,6 +208,7 @@ final class LoopDataManager {
             NotificationManager.clearLoopNotRunningNotifications()
             NotificationManager.scheduleLoopNotRunningNotifications()
             AnalyticsManager.shared.loopDidSucceed()
+            self.suggestedCarbCorrection = nil
         }
     }
     private let lockedLastLoopCompleted: Locked<Date?>
@@ -425,7 +426,7 @@ extension LoopDataManager {
                         // Prune back any counteraction effects for recomputation
                         self.insulinCounteractionEffects = self.insulinCounteractionEffects.filter { $0.endDate < endDate }
                     }
-                    self.suggestedCarbCorrection = nil
+                    // wip self.suggestedCarbCorrection = nil
 
                     completion?(.success(samples))
                 case .failure(let error):
@@ -517,7 +518,6 @@ extension LoopDataManager {
                     // Expire any bolus values now represented in the insulin data
                     // dm61 wip: this is not a realiable approach to expiring a recent bolus, it may lead to temporarily double-counting
                     if let bolusDate = self.lastRequestedBolus?.date, bolusDate.timeIntervalSinceNow < TimeInterval(minutes: -5) {
-                        NSLog("myLoop: expiring recent bolus")
                         self.lastRequestedBolus = nil
                     }
                 }
@@ -883,77 +883,56 @@ extension LoopDataManager {
         }
         
         guard let latestGlucose = glucoseStore.latestGlucose else {
-            // self.suggestedCarbCorrection = nil
             throw LoopError.missingDataError(.glucose)
         }
         
         guard let pumpStatusDate = doseStore.lastReservoirValue?.startDate else {
-            // self.suggestedCarbCorrection = nil
             throw LoopError.missingDataError(.reservoir)
         }
         
         let startDate = Date()
         
         guard startDate.timeIntervalSince(latestGlucose.startDate) <= settings.recencyInterval else {
-            // self.suggestedCarbCorrection = nil
             throw LoopError.glucoseTooOld(date: latestGlucose.startDate)
         }
         
         guard startDate.timeIntervalSince(pumpStatusDate) <= settings.recencyInterval else {
-            // self.suggestedCarbCorrection = nil
             throw LoopError.pumpDataTooOld(date: pumpStatusDate)
         }
         
         guard glucoseMomentumEffect != nil else {
-            // self.suggestedCarbCorrection = nil
             throw LoopError.missingDataError(.momentumEffect)
         }
         
         guard carbEffect != nil else {
-            // self.suggestedCarbCorrection = nil
             throw LoopError.missingDataError(.carbEffect)
         }
         
         guard insulinEffect != nil else {
-            // self.suggestedCarbCorrection = nil
             throw LoopError.missingDataError(.insulinEffect)
         }
         
         guard zeroTempEffect != [] else {
-            // self.suggestedCarbCorrection = nil
-            NSLog("myLoop: zeroTempEffect not available, skip updateCarbCorrection")
             throw LoopError.invalidData(details: "zeroTempEffect not available, updateCarbCorrection failed")
         }
         
         guard lastRequestedBolus == nil else {
-            // self.suggestedCarbCorrection = nil
-            NSLog("myLoop: pending bolus, skip updateCarbCorrection")
             throw LoopError.invalidData(details: "pending bolus, skip updateCarbCorrection")
         }
         
-        NSLog("myLoop: calculating carb correction")
         let carbCorrectionAbsorptionTime: TimeInterval = carbStore.defaultAbsorptionTimes.fast * carbStore.absorptionTimeOverrun
         let carbCorrectionThreshold: Int = 4 // do not bother with carb correction notifications below this value
         let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
         let carbCorrectionSkipInterval: TimeInterval = 0.5 * carbCorrectionAbsorptionTime // ignore dips below suspend threshold within the initial skip interval
         var effectsIncludingZeroTemping = settings.enabledEffects
         effectsIncludingZeroTemping.insert(.zeroTemp) // include effect of zero temping
-        /*
-        // exclude negative retrospective correction
-        if let retrospectiveCorrection = totalRetrospectiveCorrection?.doubleValue(for: .milligramsPerDeciliter) {
-            if retrospectiveCorrection < 0.0 {
-                effectsIncludingZeroTemping.remove(.retrospection)
-            }
-        } */
         do {
             let predictedGlucoseForCarbCorrection = try predictGlucose(using: effectsIncludingZeroTemping)
             if let currentDate = predictedGlucoseForCarbCorrection.first?.startDate {
-                NSLog("myLoop: glucose prediction for carb correction found")
                 let startDate = currentDate.addingTimeInterval(carbCorrectionSkipInterval)
                 let endDate = currentDate.addingTimeInterval(insulinActionDuration)
                 let predictedLowGlucose = predictedGlucoseForCarbCorrection.filter{ $0.startDate >= startDate && $0.startDate <= endDate && $0.quantity.doubleValue(for: .milligramsPerDeciliter) < suspendThreshold}
                 if predictedLowGlucose.count > 0 {
-                    NSLog("myLoop: glucose crossing below suspend threshold")
                     var carbCorrection = 0
                     for glucose in predictedLowGlucose {
                         let glucoseTime = glucose.startDate.timeIntervalSince(currentDate)
@@ -966,7 +945,6 @@ extension LoopDataManager {
                     }
                     suggestedCarbCorrection = carbCorrection
                     if carbCorrection >= carbCorrectionThreshold {
-                        NSLog("myLoop: carb correction: %d", carbCorrection)
                         if let lowGlucose = predictedGlucoseForCarbCorrection.first( where:
                             {$0.quantity.doubleValue(for: .milligramsPerDeciliter) < suspendThreshold} ) {
                             let timeToLow = lowGlucose.startDate.timeIntervalSince(currentDate)
@@ -975,11 +953,9 @@ extension LoopDataManager {
                             NotificationManager.sendCarbCorrectionNotification(carbCorrection, nil)
                         }
                     } else {
-                        NSLog("myLoop: carb correction below threshold, just set badge")
                         NotificationManager.sendCarbCorrectionNotificationBadge(carbCorrection)
                     }
                 } else {
-                    NSLog("myLoop: no carb correction needed, cleared")
                     suggestedCarbCorrection = 0
                     NotificationManager.clearCarbCorrectionNotification()
                 }
@@ -1008,38 +984,11 @@ extension LoopDataManager {
         
         let insulinActionDuration = insulinModel.effectDuration
         
-        // Generate and test zero-temp bg effect
-        /*
-         let startDose = Date()
-         let endDose = startDose.addingTimeInterval(.hours(6))
-         let basalUnit = DoseUnit.unitsPerHour
-         // let zeroTempDose = DoseEntry(type: .tempBasal, startDate: startDose, endDate: endDose, value: 0.0, unit: basalUnit, scheduledBasalRate: HKQuantity(unit: HKUnit(from: "IU/hr"), doubleValue: 0.5))
-         let zeroTempDose = DoseEntry(type: .tempBasal, startDate: startDose, endDate: endDose, value: 0.0, unit: basalUnit)
-         let zeroTempDoses = zeroTempDose.annotated(with: basalRateSchedule!)
-         // let zeroTempDoses = [zeroTempDose]
-         let unit = HKUnit.milligramsPerDeciliter
-         var zeroTempUnits: Double = 0.0
-         for dose in zeroTempDoses {
-         zeroTempUnits += dose.netBasalUnits
-         }
-         NSLog("myLoop: %4.2f", zeroTempUnits)
-         let glucoseEffects = zeroTempDoses.glucoseEffects(insulinModel: insulinModelSettings!.model, insulinSensitivity: insulinSensitivitySchedule!).filterDateRange(startDose, endDose)
-         let effectsArray = glucoseEffects.map{ $0.quantity.doubleValue(for: unit) }
-         for effect in effectsArray {
-         NSLog("myLoop: %4.2f", effect)
-         }
-         */
-        
         // use the new LoopKit method tempBasalGlucoseEffects to generate zero temp effects
         let startZeroTempDose = Date()
         let endZeroTempDose = startZeroTempDose.addingTimeInterval(insulinActionDuration)
         let zeroTemp = DoseEntry(type: .tempBasal, startDate: startZeroTempDose, endDate: endZeroTempDose, value: 0.0, unit: DoseUnit.unitsPerHour)
         zeroTempEffect = zeroTemp.tempBasalGlucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivity, basalRateSchedule: basalRateSchedule).filterDateRange(startZeroTempDose, endZeroTempDose)
-        
-        //let unit = HKUnit.milligramsPerDeciliter
-        //let eventualGlucoseEffect = testGlucoseEffects.last?.quantity.doubleValue(for: unit)
-        //let testEffectsArray = testGlucoseEffects.map{ $0.quantity.doubleValue(for: unit) }
-        //NSLog("myLoop: eventual zero-temping glucose effect: %4.2f", eventualGlucoseEffect ?? 0.0)
         
     }
 
