@@ -51,6 +51,12 @@ final class LoopDataManager {
     
     // Make overall retrospective effect available for display to the user
     var totalRetrospectiveCorrection: HKQuantity?
+    
+    /* dm61 wip parameter estimation
+    typealias Effects = (date: Date, discrepancy: Double, insulinEffect: Double, carbEffect: Double)
+    // array of effects used in parameter estimation calculations
+    var pastEffectsForEstimation: [Effects]
+    */
 
     init(
         lastLoopCompleted: Date?,
@@ -96,6 +102,9 @@ final class LoopDataManager {
         integralRC = IntegralRetrospectiveCorrection(standardCorrectionEffectDuration)
         
         standardRC = StandardRetrospectiveCorrection(standardCorrectionEffectDuration)
+        
+        // dm61 wip parameter estimation
+        // self.pastEffectsForEstimation = []
         
         cacheStore.delegate = self
 
@@ -740,6 +749,163 @@ extension LoopDataManager {
         }
 
     }
+    
+    
+/* dm61 wip, insert parameter estimation from my-parameter-estimation-wip
+    func effectsForParameterEstimation() {
+        
+        self.pastEffectsForEstimation = []
+        let updateGroup = DispatchGroup()
+        let glucoseUnit = HKUnit.milligramsPerDeciliter // do all calcs in mg/dL
+        let estimationHours: Double = 24.0
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .medium
+        dateFormatter.locale = Locale(identifier: "en_US")
+        
+        NSLog("myLoop ****************************************************************************")
+        NSLog("myLoop %@", dateFormatter.string(from: Date()))
+        
+        // Fetch glucose values
+        var latestGlucoseDate: Date?
+        var glucoseValues: [StoredGlucoseSample]?
+        updateGroup.enter()
+        glucoseStore.getCachedGlucoseSamples(start: Date(timeIntervalSinceNow: TimeInterval(hours: -estimationHours))) { (values) in
+            glucoseValues = values
+            latestGlucoseDate = values.last?.startDate
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        
+        guard let lastGlucoseDate = latestGlucoseDate else {
+            NSLog("myLoop: *** No past glucose samples found ***")
+            return
+        }
+        
+        NSLog("myLoop: +++ %d past glucose values +++", glucoseValues!.count)
+        
+        let estimationStart = lastGlucoseDate.addingTimeInterval(TimeInterval(hours: -estimationHours))
+        
+        // find insulin effects over estimationHours
+        var pastInsulinEffects: [GlucoseEffect] = []
+        updateGroup.enter()
+        self.doseStore.getGlucoseEffects(start: estimationStart) { (result) -> Void in
+            switch result {
+            case .failure(let error):
+                self.logger.error(error)
+                NSLog("myLoop: *** Could not get past insulin effects ***")
+            case .success(let effects):
+                pastInsulinEffects = effects
+            }
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        if pastInsulinEffects.count == 0 {
+            NSLog("myLoop: XXX Past insulin effects not available XXX")
+            return
+        } else {
+            NSLog("myLoop: +++ %d past insulin effects +++", pastInsulinEffects.count)
+        }
+        
+        // find update carb effects over estimationHours
+        var pastCarbEffects: [GlucoseEffect] = []
+        updateGroup.enter()
+        self.carbStore.getGlucoseEffects(
+            start: estimationStart,
+            effectVelocities: self.settings.dynamicCarbAbsorptionEnabled ? self.insulinCounteractionEffects : nil
+        ) { (result) -> Void in
+            switch result {
+            case .failure(let error):
+                self.logger.error(error)
+                NSLog("myLoop: *** Could not get past carb effects ***")
+            case .success(let effects):
+                pastCarbEffects = effects
+            }
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        if pastCarbEffects.count == 0 {
+            NSLog("myLoop: XXX Past carb effects not available XXX")
+            return
+        } else {
+            NSLog("myLoop: +++ %d past carb effects +++", pastCarbEffects.count)
+        }
+        
+        // construct array of past 30-min glucose changes
+        var pastGlucoseChanges: [GlucoseChange] = []
+        for glucoseSample in glucoseValues! {
+            var sampleRetrospectiveGlucoseChange: GlucoseChange? = nil
+            let sampleGlucoseChangeEnd = glucoseSample.startDate
+            let sampleGlucoseChangeStart = sampleGlucoseChangeEnd.addingTimeInterval(TimeInterval(minutes: -30))
+            updateGroup.enter()
+            self.glucoseStore.getGlucoseChange(start: sampleGlucoseChangeStart, end: sampleGlucoseChangeEnd) { (change) in
+                sampleRetrospectiveGlucoseChange = change
+                updateGroup.leave()
+            }
+            
+            _ = updateGroup.wait(timeout: .distantFuture)
+            
+            if let change = sampleRetrospectiveGlucoseChange {
+                pastGlucoseChanges.append(change)
+            }
+        }
+        if pastGlucoseChanges.count == 0 {
+            NSLog("myLoop: XXX Array of past BG changes not initialized XXX")
+            return
+        } else {
+            NSLog("myLoop: +++ %d past glucose changes +++", pastGlucoseChanges.count)
+        }
+        
+        // compute effects for past retrospective glucose changes
+        for change in pastGlucoseChanges {
+            let startDate = change.start.startDate
+            let endDate = change.end.endDate
+            let retrospectionTimeInterval = change.end.endDate.timeIntervalSince(change.start.endDate).minutes
+            if retrospectionTimeInterval < 6 {
+                continue // too few retrospective glucose values, erroneous insulin and carb effects, skip
+            }
+            let retrospectionScale = 30.0 / retrospectionTimeInterval
+            
+            // current BG sample
+            let sampleBG = change.end.quantity.doubleValue(for: glucoseUnit) // mg/dL
+            
+            // average delta BG over retrospection interval
+            let deltaBG = retrospectionScale * (change.end.quantity.doubleValue(for: glucoseUnit) -
+                change.start.quantity.doubleValue(for: glucoseUnit))// mg/dL
+            
+            // discrepancy
+            let pastRetrospectivePrediction = LoopMath.predictGlucose(startingAt: change.start, effects:
+                pastCarbEffects.filterDateRange(startDate, endDate), pastInsulinEffects.filterDateRange(startDate, endDate))
+            guard let predictedGlucose = pastRetrospectivePrediction.last else {
+                continue // unable to predict glucose for this change
+            }
+            let discrepancy = retrospectionScale * (change.end.quantity.doubleValue(for: glucoseUnit) - predictedGlucose.quantity.doubleValue(for: glucoseUnit)) // mg/dL
+            
+            // carb effect
+            let pastRetrospectiveCarbEffect = LoopMath.predictGlucose(startingAt: change.start, effects:
+                pastCarbEffects.filterDateRange(startDate, endDate))
+            guard let predictedCarbOnlyGlucose = pastRetrospectiveCarbEffect.last else {
+                continue // unable to determine carb effect for this change
+            }
+            let carbEffect = retrospectionScale * (-change.start.quantity.doubleValue(for: glucoseUnit) + predictedCarbOnlyGlucose.quantity.doubleValue(for: glucoseUnit))
+            
+            // insulin effect
+            let pastRetrospectiveInsulinEffect = LoopMath.predictGlucose(startingAt: change.start, effects:
+                pastInsulinEffects.filterDateRange(startDate, endDate))
+            guard let predictedInsulinOnlyGlucose = pastRetrospectiveInsulinEffect.last else {
+                continue // unable to determine insulin effect for this change
+            }
+            let insulinEffect = retrospectionScale * (-change.start.quantity.doubleValue(for: glucoseUnit) + predictedInsulinOnlyGlucose.quantity.doubleValue(for: glucoseUnit))
+            
+            self.pastEffectsForEstimation.append((date: endDate, discrepancy: discrepancy, insulinEffect: insulinEffect, carbEffect: carbEffect))
+            
+            NSLog("myLoopPE: %@, %4.0f, %4.2f, %4.2f, %4.2f, %4.2f", dateFormatter.string(from: endDate), sampleBG, deltaBG, insulinEffect, carbEffect, discrepancy)
+            
+        }
+        
+    }
+*/
     
     private func notify(forChange context: LoopUpdateContext) {
         NotificationCenter.default.post(name: .LoopDataUpdated,
