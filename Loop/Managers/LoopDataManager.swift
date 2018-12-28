@@ -1091,18 +1091,19 @@ extension LoopDataManager {
         )
         recommendedBolus = (recommendation: recommendation, date: startDate)
         
-        // wip super bolus recommendation only if initial or final glucose are above target
+        // wip super bolus recommendation
+        // offer super bolus only if initial or final glucose are above target
         if let firstGlucose = predictedGlucose.first, let lastGlucose = predictedGlucose.last {
             if firstGlucose.quantity > glucoseTargetRange.maxQuantity(at: firstGlucose.startDate) || lastGlucose.quantity > glucoseTargetRange.maxQuantity(at: lastGlucose.startDate) {
                 
                 var effectsIncludingZeroTemping = settings.enabledEffects
                 effectsIncludingZeroTemping.insert(.zeroTemp)
-                /*
+                // remove positive retrospective correction
                 if let correction = totalRetrospectiveCorrection?.doubleValue(for: .milligramsPerDeciliter) {
                     if correction > 0.0 {
                         effectsIncludingZeroTemping.remove(.retrospection)
                     }
-                } */
+                }
                 let predictedGlucoseWithZeroTemp = try predictGlucose(using: effectsIncludingZeroTemping)
                 let maximumSuperBolus = predictedGlucoseWithZeroTemp.recommendedBolus(
                     to: glucoseTargetRange,
@@ -1112,7 +1113,7 @@ extension LoopDataManager {
                     pendingInsulin: pendingInsulin,
                     maxBolus: maxBolus
                 )
-                let superBolusAggressiveness = 0.5
+                let superBolusAggressiveness = 0.75
                 let superBolusAmount = recommendation.amount + max(superBolusAggressiveness * (maximumSuperBolus.amount - recommendation.amount), 0.0)
                 let superBolus: BolusRecommendation = BolusRecommendation(amount: superBolusAmount, pendingInsulin: maximumSuperBolus.pendingInsulin)
                 recommendedSuperBolus = (recommendation: superBolus, date: startDate)
