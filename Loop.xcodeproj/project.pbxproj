@@ -301,6 +301,7 @@
 		9E60409B218FFF75003D93A9 /* glucose_discrepancies_single_same_sign.json in Resources */ = {isa = PBXBuildFile; fileRef = 9E60409A218FFF75003D93A9 /* glucose_discrepancies_single_same_sign.json */; };
 		9EA324932184BF2300F337DB /* StandardRetrospectiveCorrection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EA324922184BF2300F337DB /* StandardRetrospectiveCorrection.swift */; };
 		9EAFDFEE218E6CBC0016F9ED /* glucose_discrepancies_sampled.json in Resources */ = {isa = PBXBuildFile; fileRef = 9EAFDFED218E6CBB0016F9ED /* glucose_discrepancies_sampled.json */; };
+		9EBD41262210DBAF00C28E21 /* CarbCorrection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EBD41252210DBAF00C28E21 /* CarbCorrection.swift */; };
 		C10428971D17BAD400DD539A /* NightscoutUploadKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C10428961D17BAD400DD539A /* NightscoutUploadKit.framework */; };
 		C10B28461EA9BA5E006EA1FC /* far_future_high_bg_forecast.json in Resources */ = {isa = PBXBuildFile; fileRef = C10B28451EA9BA5E006EA1FC /* far_future_high_bg_forecast.json */; };
 		C11C87DE1E21EAAD00BB71D3 /* HKUnit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F526D5E1DF2459000A04910 /* HKUnit.swift */; };
@@ -847,6 +848,7 @@
 		9E60409A218FFF75003D93A9 /* glucose_discrepancies_single_same_sign.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = glucose_discrepancies_single_same_sign.json; sourceTree = "<group>"; };
 		9EA324922184BF2300F337DB /* StandardRetrospectiveCorrection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardRetrospectiveCorrection.swift; sourceTree = "<group>"; };
 		9EAFDFED218E6CBB0016F9ED /* glucose_discrepancies_sampled.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = glucose_discrepancies_sampled.json; sourceTree = "<group>"; };
+		9EBD41252210DBAF00C28E21 /* CarbCorrection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarbCorrection.swift; sourceTree = "<group>"; };
 		C10428961D17BAD400DD539A /* NightscoutUploadKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NightscoutUploadKit.framework; path = Carthage/Build/iOS/NightscoutUploadKit.framework; sourceTree = SOURCE_ROOT; };
 		C10B28451EA9BA5E006EA1FC /* far_future_high_bg_forecast.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = far_future_high_bg_forecast.json; sourceTree = "<group>"; };
 		C12F21A61DFA79CB00748193 /* recommend_temp_basal_very_low_end_in_range.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = recommend_temp_basal_very_low_end_in_range.json; sourceTree = "<group>"; };
@@ -1223,6 +1225,7 @@
 				4F70C20F1DE8FAC5006380B7 /* StatusExtensionDataManager.swift */,
 				4328E0341CFC0AE100E199AA /* WatchDataManager.swift */,
 				9E575200217D87E7002D167B /* IntegralRetrospectiveCorrection.swift */,
+				9EBD41252210DBAF00C28E21 /* CarbCorrection.swift */,
 			);
 			path = Managers;
 			sourceTree = "<group>";
@@ -1909,6 +1912,7 @@
 				C17824A51E1AD4D100D9D25C /* BolusRecommendation.swift in Sources */,
 				4F70C2131DE90339006380B7 /* StatusExtensionContext.swift in Sources */,
 				434F54571D287FDB002A9274 /* NibLoadable.swift in Sources */,
+				9EBD41262210DBAF00C28E21 /* CarbCorrection.swift in Sources */,
 				43441A9C1EDB34810087958C /* StatusExtensionContext+LoopKit.swift in Sources */,
 				4FF4D1001E18374700846527 /* WatchContext.swift in Sources */,
 				430B298A2041F54A00BA9F93 /* NSUserDefaults.swift in Sources */,
