@@ -37,7 +37,9 @@ final class LoopDataManager {
     private let standardRC: StandardRetrospectiveCorrection
 
     private let logger: CategoryLogger
-
+    
+    var suggestedCarbCorrection: Int?
+    
     // References to registered notification center observers
     private var notificationObservers: [Any] = []
 
@@ -134,6 +136,7 @@ final class LoopDataManager {
     var settings: LoopSettings {
         didSet {
             UserDefaults.appGroup.loopSettings = settings
+            suggestedCarbCorrection = nil
             notify(forChange: .preferences)
             AnalyticsManager.shared.didChangeLoopSettings(from: oldValue, to: settings)
         }
@@ -173,7 +176,9 @@ final class LoopDataManager {
         }
     }
     private var retrospectiveGlucoseDiscrepanciesSummed: [GlucoseChange]?
-
+    
+    private var zeroTempEffect: [GlucoseEffect] = []
+    
     fileprivate var predictedGlucose: [GlucoseValue]? {
         didSet {
             recommendedTempBasal = nil
@@ -200,6 +205,7 @@ final class LoopDataManager {
             NotificationManager.clearLoopNotRunningNotifications()
             NotificationManager.scheduleLoopNotRunningNotifications()
             AnalyticsManager.shared.loopDidSucceed()
+            self.suggestedCarbCorrection = nil
         }
     }
     private let lockedLastLoopCompleted: Locked<Date?>
@@ -710,7 +716,13 @@ extension LoopDataManager {
                 logger.error(error)
             }
         }
-
+        
+        do {
+            try updateZeroTempEffect()
+        } catch let error {
+            logger.error(error)
+        }
+        
         if predictedGlucose == nil {
             do {
                 try updatePredictedGlucoseAndRecommendedBasalAndBolus()
@@ -720,6 +732,12 @@ extension LoopDataManager {
                 throw error
             }
         }
+        
+        // carb correction recommendation, do only if data has been updated
+        if suggestedCarbCorrection == nil {
+            try updateCarbCorrection()
+        }
+        
     }
 
     private func notify(forChange context: LoopUpdateContext) {
@@ -793,7 +811,11 @@ extension LoopDataManager {
         if inputs.contains(.retrospection) {
             effects.append(self.retrospectiveGlucoseEffect)
         }
-
+        
+        if inputs.contains(.zeroTemp) {
+            effects.append(self.zeroTempEffect)
+        }
+        
         var prediction = LoopMath.predictGlucose(startingAt: glucose, momentum: momentum, effects: effects)
 
         // Dosing requires prediction entries at least as long as the insulin model duration.
@@ -840,6 +862,130 @@ extension LoopDataManager {
             retrospectiveGlucoseEffect = standardRC.updateRetrospectiveCorrectionEffect(glucose, retrospectiveGlucoseDiscrepanciesSummed)
             totalRetrospectiveCorrection = standardRC.totalGlucoseCorrectionEffect
         }
+    }
+
+    // carb correction recommendation, do only if settings are available
+    private func updateCarbCorrection() throws {
+        dispatchPrecondition(condition: .onQueue(dataAccessQueue))
+        
+        // Get settings, otherwise throw error
+        guard
+            let insulinActionDuration = insulinModelSettings?.model.effectDuration,
+            let suspendThreshold = settings.suspendThreshold?.quantity.doubleValue(for: .milligramsPerDeciliter),
+            let sensitivity = insulinSensitivitySchedule?.averageValue(),
+            let carbRatio = carbRatioSchedule?.averageValue()
+            else {
+                self.suggestedCarbCorrection = nil
+                throw LoopError.invalidData(details: "Settings not available, updateCarbCorrection failed")
+        }
+        
+        guard let latestGlucose = glucoseStore.latestGlucose else {
+            throw LoopError.missingDataError(.glucose)
+        }
+        
+        guard let pumpStatusDate = doseStore.lastReservoirValue?.startDate else {
+            throw LoopError.missingDataError(.reservoir)
+        }
+        
+        let startDate = Date()
+        
+        guard startDate.timeIntervalSince(latestGlucose.startDate) <= settings.recencyInterval else {
+            throw LoopError.glucoseTooOld(date: latestGlucose.startDate)
+        }
+        
+        guard startDate.timeIntervalSince(pumpStatusDate) <= settings.recencyInterval else {
+            throw LoopError.pumpDataTooOld(date: pumpStatusDate)
+        }
+        
+        guard glucoseMomentumEffect != nil else {
+            throw LoopError.missingDataError(.momentumEffect)
+        }
+        
+        guard carbEffect != nil else {
+            throw LoopError.missingDataError(.carbEffect)
+        }
+        
+        guard insulinEffect != nil else {
+            throw LoopError.missingDataError(.insulinEffect)
+        }
+        
+        guard zeroTempEffect != [] else {
+            throw LoopError.invalidData(details: "zeroTempEffect not available, updateCarbCorrection failed")
+        }
+        
+        guard lastRequestedBolus == nil else {
+            throw LoopError.invalidData(details: "pending bolus, skip updateCarbCorrection")
+        }
+        
+        let carbCorrectionAbsorptionTime: TimeInterval = carbStore.defaultAbsorptionTimes.fast * carbStore.absorptionTimeOverrun
+        let carbCorrectionThreshold: Int = 4 // do not bother with carb correction notifications below this value
+        let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
+        let carbCorrectionSkipInterval: TimeInterval = 0.5 * carbCorrectionAbsorptionTime // ignore dips below suspend threshold within the initial skip interval
+        var effectsIncludingZeroTemping = settings.enabledEffects
+        effectsIncludingZeroTemping.insert(.zeroTemp) // include effect of zero temping
+        do {
+            let predictedGlucoseForCarbCorrection = try predictGlucose(using: effectsIncludingZeroTemping)
+            if let currentDate = predictedGlucoseForCarbCorrection.first?.startDate {
+                let startDate = currentDate.addingTimeInterval(carbCorrectionSkipInterval)
+                let endDate = currentDate.addingTimeInterval(insulinActionDuration)
+                let predictedLowGlucose = predictedGlucoseForCarbCorrection.filter{ $0.startDate >= startDate && $0.startDate <= endDate && $0.quantity.doubleValue(for: .milligramsPerDeciliter) < suspendThreshold}
+                if predictedLowGlucose.count > 0 {
+                    var carbCorrection = 0
+                    for glucose in predictedLowGlucose {
+                        let glucoseTime = glucose.startDate.timeIntervalSince(currentDate)
+                        let anticipatedAbsorbedFraction = min(1.0, glucoseTime.minutes / carbCorrectionAbsorptionTime.minutes)
+                        let requiredCorrection = (( suspendThreshold - glucose.quantity.doubleValue(for: .milligramsPerDeciliter)) / anticipatedAbsorbedFraction) * carbRatio / sensitivity
+                        let requiredCorrectionRounded = Int(ceil(carbCorrectionFactor * requiredCorrection))
+                        if requiredCorrectionRounded > carbCorrection {
+                            carbCorrection = requiredCorrectionRounded
+                        }
+                    }
+                    suggestedCarbCorrection = carbCorrection
+                    if carbCorrection >= carbCorrectionThreshold {
+                        if let lowGlucose = predictedGlucoseForCarbCorrection.first( where:
+                            {$0.quantity.doubleValue(for: .milligramsPerDeciliter) < suspendThreshold} ) {
+                            let timeToLow = lowGlucose.startDate.timeIntervalSince(currentDate)
+                            NotificationManager.sendCarbCorrectionNotification(carbCorrection, timeToLow)
+                        } else {
+                            NotificationManager.sendCarbCorrectionNotification(carbCorrection, nil)
+                        }
+                    } else {
+                        NotificationManager.sendCarbCorrectionNotificationBadge(carbCorrection)
+                    }
+                } else {
+                    suggestedCarbCorrection = 0
+                    NotificationManager.clearCarbCorrectionNotification()
+                }
+            }
+        } catch {
+            throw LoopError.invalidData(details: "predictedGlucose failed, updateCarbCorrection failed")
+        }
+        return
+    }
+    
+    /// Generates a glucose prediction effect of zero temping over duration of insulin action starting at current date
+    ///
+    /// - Throws: LoopError.configurationError
+    private func updateZeroTempEffect() throws {
+        dispatchPrecondition(condition: .onQueue(dataAccessQueue))
+        
+        // Get settings, otherwise clear effect and throw error
+        guard
+            let insulinModel = insulinModelSettings?.model,
+            let insulinSensitivity = insulinSensitivitySchedule,
+            let basalRateSchedule = basalRateSchedule
+            else {
+                zeroTempEffect = []
+                throw LoopError.configurationError(.generalSettings)
+        }
+        
+        let insulinActionDuration = insulinModel.effectDuration
+        
+        // use the new LoopKit method tempBasalGlucoseEffects to generate zero temp effects
+        let startZeroTempDose = Date()
+        let endZeroTempDose = startZeroTempDose.addingTimeInterval(insulinActionDuration)
+        let zeroTemp = DoseEntry(type: .tempBasal, startDate: startZeroTempDose, endDate: endZeroTempDose, value: 0.0, unit: DoseUnit.unitsPerHour)
+        zeroTempEffect = zeroTemp.tempBasalGlucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivity, basalRateSchedule: basalRateSchedule).filterDateRange(startZeroTempDose, endZeroTempDose)
     }
 
     /// Runs the glucose prediction on the latest effect data.
@@ -1165,6 +1311,8 @@ extension LoopDataManager {
                 "glucoseMomentumEffect: \(manager.glucoseMomentumEffect ?? [])",
                 "",
                 "retrospectiveGlucoseEffect: \(manager.retrospectiveGlucoseEffect)",
+                "",
+                "zeroTempEffect: \(manager.zeroTempEffect)",
                 "",
                 "recommendedTempBasal: \(String(describing: state.recommendedTempBasal))",
                 "recommendedBolus: \(String(describing: state.recommendedBolus))",
