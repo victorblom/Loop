@@ -18,6 +18,7 @@ struct NotificationManager {
         case pumpBatteryLow
         case pumpReservoirEmpty
         case pumpReservoirLow
+        case carbCorrectionRecommended
     }
 
     enum Action: String {
@@ -234,4 +235,69 @@ struct NotificationManager {
     static func clearPumpReservoirNotification() {
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [Category.pumpReservoirLow.rawValue])
     }
+    
+    static func sendCarbCorrectionNotification(_ grams: Int, _ lowPredictedIn: TimeInterval?) {
+        let notification = UNMutableNotificationContent()
+        
+        notification.title = NSLocalizedString("Carb Correction", comment: "The notification title for carb correction")
+        
+        let gramsString = NumberFormatter.localizedString(from: NSNumber(value: grams), number: .none)
+        
+        let intervalFormatter = DateComponentsFormatter()
+        intervalFormatter.allowedUnits = [.hour, .minute]
+        intervalFormatter.maximumUnitCount = 1
+        intervalFormatter.unitsStyle = .full
+        intervalFormatter.includesApproximationPhrase = false
+        intervalFormatter.includesTimeRemainingPhrase = false
+        
+        if let lowPredictedIn = lowPredictedIn, let timeString = intervalFormatter.string(from: lowPredictedIn) {
+            if lowPredictedIn < TimeInterval(minutes: 15) {
+                notification.body = String(format: NSLocalizedString("%1$@ g Recommended", comment: "Carb correction for imminent low alert format string. (1: Recommended correction grams)"), gramsString)
+            } else {
+                notification.body = String(format: NSLocalizedString("%1$@ g Recommended to Treat Low Predicted in %2$@", comment: "Carb correction with time to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)"), gramsString, timeString)
+            }
+        } else {
+            notification.body = String(format: NSLocalizedString("Recommended: %1$@ g", comment: "Carb correction alert format string. (1: Recommended correction grams)"), gramsString)
+        }
+        
+        notification.sound = UNNotificationSound.default()
+        notification.categoryIdentifier = Category.carbCorrectionRecommended.rawValue
+        notification.badge = NSNumber(value: grams)
+        
+        let request = UNNotificationRequest(
+            identifier: Category.carbCorrectionRecommended.rawValue,
+            content: notification,
+            trigger: nil
+        )
+        
+        UNUserNotificationCenter.current().add(request)
+    }
+    
+    static func clearCarbCorrectionNotification() {
+        let notification = UNMutableNotificationContent()
+        notification.categoryIdentifier = Category.carbCorrectionRecommended.rawValue
+        notification.badge = NSNumber(value: 0)
+        notification.sound = nil
+        let clearBadge = UNNotificationRequest(
+            identifier: Category.carbCorrectionRecommended.rawValue,
+            content: notification,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(clearBadge)
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [Category.carbCorrectionRecommended.rawValue])
+    }
+    
+    static func sendCarbCorrectionNotificationBadge(_ grams: Int) {
+        let notification = UNMutableNotificationContent()
+        notification.categoryIdentifier = Category.carbCorrectionRecommended.rawValue
+        notification.badge = NSNumber(value: grams)
+        notification.sound = nil
+        let setBadge = UNNotificationRequest(
+            identifier: Category.carbCorrectionRecommended.rawValue,
+            content: notification,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(setBadge)
+    }
+    
 }

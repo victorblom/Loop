@@ -17,6 +17,9 @@ struct PredictionInputEffect: OptionSet {
     static let insulin          = PredictionInputEffect(rawValue: 1 << 1)
     static let momentum         = PredictionInputEffect(rawValue: 1 << 2)
     static let retrospection    = PredictionInputEffect(rawValue: 1 << 3)
+    static let zeroTemp         = PredictionInputEffect(rawValue: 1 << 4)
+    static let standardRetrospection = PredictionInputEffect(rawValue: 1 << 5)
+    static let futureCarbs      = PredictionInputEffect(rawValue: 1 << 6)
 
     static let all: PredictionInputEffect = [.carbs, .insulin, .momentum, .retrospection]
 
@@ -30,6 +33,8 @@ struct PredictionInputEffect: OptionSet {
             return NSLocalizedString("Glucose Momentum", comment: "Title of the prediction input effect for glucose momentum")
         case [.retrospection]:
             return NSLocalizedString("Retrospective Correction", comment: "Title of the prediction input effect for retrospective correction")
+        case [.zeroTemp]:
+            return NSLocalizedString("Zero Temping", comment: "Title of the prediction input effect for zero temping")
         default:
             return nil
         }
@@ -45,6 +50,8 @@ struct PredictionInputEffect: OptionSet {
             return NSLocalizedString("15 min glucose regression coefficient (b₁), continued with decay over 30 min", comment: "Description of the prediction input effect for glucose momentum")
         case [.retrospection]:
             return NSLocalizedString("30 min comparison of glucose prediction vs actual, continued with decay over 60 min", comment: "Description of the prediction input effect for retrospective correction")
+        case [.zeroTemp]:
+            return NSLocalizedString("Glucose effect of zero temping", comment: "Description of the prediction input effect for zero temping")
         default:
             return nil
         }
