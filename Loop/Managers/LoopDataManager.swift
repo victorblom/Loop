@@ -1022,42 +1022,6 @@ extension LoopDataManager {
         return
     }
     
-    /* wip
-     // carb effect
-     if let retrospectiveCarbEffect = carbEffect?.filterDateRange(lastDiscrepancy.startDate, lastDiscrepancy.endDate) {
-     if let carbEffectLast = retrospectiveCarbEffect.last?.quantity.doubleValue(for: .milligramsPerDeciliter), let carbEffectFirst = retrospectiveCarbEffect.first?.quantity.doubleValue(for: .milligramsPerDeciliter) {
-     let carb = carbEffectLast - carbEffectFirst
-     NSLog("myLoop: carb %4.2f", carb)
-     }
-     }
-     
-     // insulin effect
-     if let retrospectiveInsulinEffect = insulinEffect?.filterDateRange(lastDiscrepancy.startDate, lastDiscrepancy.endDate) {
-     if let insulinEffectLast = retrospectiveInsulinEffect.last?.quantity.doubleValue(for: .milligramsPerDeciliter), let insulinEffectFirst = retrospectiveInsulinEffect.first?.quantity.doubleValue(for: .milligramsPerDeciliter) {
-     let insulin = insulinEffectLast - insulinEffectFirst
-     NSLog("myLoop: insulin %4.2f", insulin)
-     }
-     }
-     
-     // glucose change
-     var glucoseChange: (GlucoseValue, GlucoseValue)?
-     updateGroup.enter()
-     self.glucoseStore.getGlucoseChange(start: lastDiscrepancy.startDate, end: lastDiscrepancy.endDate) { (change) in
-     glucoseChange = change
-     updateGroup.leave()
-     }
-     _ = updateGroup.wait(timeout: .distantFuture)
-     
-     if let firstGlucose = glucoseChange?.0, let lastGlucose = glucoseChange?.1 {
-     let firstGlucoseValue = firstGlucose.quantity.doubleValue(for: .milligramsPerDeciliter)
-     let lastGlucoseValue = lastGlucose.quantity.doubleValue(for: .milligramsPerDeciliter)
-     let glucoseChange = lastGlucoseValue - firstGlucoseValue
-     NSLog("myLoop: glucose change %4.2f", glucoseChange)
-     }
-     NSLog("myLoop: -------------------")
-     */
-    
-    
     // carb correction for effects
     private func carbsRequired(effects: PredictionInputEffect) throws -> (Double, TimeInterval?) {
         
