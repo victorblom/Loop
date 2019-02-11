@@ -26,48 +26,26 @@ class CarbCorrection {
     public var standardRetrospectiveGlucoseEffect: [GlucoseEffect]?
     public var retrospectiveGlucoseEffect: [GlucoseEffect]?
     public var zeroTempEffect: [GlucoseEffect]?
-    
-    public var suggestedCarbCorrection: Int?
-    
     public var insulinCounteractionEffects: [GlucoseEffectVelocity]?
-    
+
+    public var retrospectiveGlucoseDiscrepancies: [GlucoseEffect]?
     public var retrospectiveGlucoseDiscrepanciesSummed: [GlucoseChange]?
     
+    public var suggestedCarbCorrection: Int?
     public var glucose: GlucoseValue?
     
     /**
      Carb correction math parameters:
-     - currentDiscrepancyGain: Standard retrospective correction gain
-     - persistentDiscrepancyGain: Gain for persistent long-term modeling errors, must be greater than or equal to currentDiscrepancyGain
-     - correctionTimeConstant: How fast integral effect accumulates in response to persistent errors
-     - differentialGain: Differential effect gain
-     - delta: Glucose sampling time interval (5 min)
-     - maximumCorrectionEffectDuration: Maximum duration of the correction effect in glucose prediction
+     -
      */
-    static let currentDiscrepancyGain: Double = 1.0
-    static let persistentDiscrepancyGain: Double = 5.0
-    static let correctionTimeConstant: TimeInterval = TimeInterval(minutes: 90.0)
-    static let differentialGain: Double = 2.0
-    static let delta: TimeInterval = TimeInterval(minutes: 5.0)
-    static let maximumCorrectionEffectDuration: TimeInterval = TimeInterval(minutes: 240.0)
-    
-    /// Initialize computed integral retrospective correction parameters
-    static let integralForget: Double = exp( -delta.minutes / correctionTimeConstant.minutes )
-    static let integralGain: Double = ((1 - integralForget) / integralForget) *
-        (persistentDiscrepancyGain - currentDiscrepancyGain)
-    static let proportionalGain: Double = currentDiscrepancyGain - integralGain
+    let carbCorrectionSkipFraction: Double = 0.4
+    let delta: TimeInterval = TimeInterval(minutes: 5.0)
     
     /// All math is performed with glucose expressed in mg/dL
     private let unit = HKUnit.milligramsPerDeciliter
     
     /// State variables reported in diagnostic issue report
-    private var recentDiscrepancyValues: [Double] = []
-    private var integralCorrectionEffectDuration: TimeInterval?
-    private var proportionalCorrection: Double = 0.0
-    private var integralCorrection: Double = 0.0
-    private var differentialCorrection: Double = 0.0
-    private var currentDate: Date = Date()
-    private var ircStatus: String = "-"
+    private var carbCorrectionStatus: String = "-"
     
     let carbCorrectionAbsorptionTime: TimeInterval
     
@@ -96,28 +74,34 @@ class CarbCorrection {
      
      - Parameters:
      - fix glucose: Most recent glucose
-     - fix retrospectiveGlucoseDiscrepanciesSummed: Timeline of past discepancies
      
      - Returns:
-     - fix totalRetrospectiveCorrection: Overall glucose effect
+     - suggested carb correction, if needed
      */
     
     // carb correction recommendation
-    private func updateCarbCorrection() throws {
+    public func updateCarbCorrection(_ glucose: GlucoseValue) throws {
+
+        NSLog("myLoop: +++ CarbCorrectionClass +++")
+        self.glucose = glucose
         
         guard glucoseMomentumEffect != nil else {
+            NSLog("myLoop: ERROR momentum not set ")
             throw LoopError.missingDataError(.momentumEffect)
         }
         
         guard carbEffect != nil else {
+            NSLog("myLoop: ERROR carb effects not set ")
             throw LoopError.missingDataError(.carbEffect)
         }
         
         guard insulinEffect != nil else {
+            NSLog("myLoop: ERROR insulin effects not set ")
             throw LoopError.missingDataError(.insulinEffect)
         }
         
         guard zeroTempEffect != nil else {
+            NSLog("myLoop: ERROR no zero temp effects ")
             throw LoopError.invalidData(details: "zeroTempEffect not available, updateCarbCorrection failed")
         }
         
@@ -220,7 +204,7 @@ class CarbCorrection {
                 throw LoopError.invalidData(details: "Settings not available, updateCarbCorrection failed")
         }
         
-        let carbCorrectionSkipInterval: TimeInterval = 0.4 * carbCorrectionAbsorptionTime // ignore dips below suspend threshold within the initial skip interval
+        let carbCorrectionSkipInterval: TimeInterval = self.carbCorrectionSkipFraction * carbCorrectionAbsorptionTime // ignore dips below suspend threshold within the initial skip interval
         
         do {
             let predictedGlucoseForCarbCorrection = try predictGlucose(using: effects)

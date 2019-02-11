@@ -35,6 +35,8 @@ final class LoopDataManager {
     private let integralRC: IntegralRetrospectiveCorrection
     
     private let standardRC: StandardRetrospectiveCorrection
+    
+    private let carbCorrection: CarbCorrection
 
     private let logger: CategoryLogger
     
@@ -96,6 +98,9 @@ final class LoopDataManager {
         integralRC = IntegralRetrospectiveCorrection(standardCorrectionEffectDuration)
         
         standardRC = StandardRetrospectiveCorrection(standardCorrectionEffectDuration)
+        
+        let carbCorrectionAbsorptionTime: TimeInterval = carbStore.defaultAbsorptionTimes.fast * carbStore.absorptionTimeOverrun
+        carbCorrection = CarbCorrection(carbCorrectionAbsorptionTime)
         
         cacheStore.delegate = self
 
@@ -674,7 +679,6 @@ extension LoopDataManager {
 
                 updateGroup.leave()
             }
-
             _ = updateGroup.wait(timeout: .distantFuture)
         }
 
@@ -695,7 +699,7 @@ extension LoopDataManager {
                 updateGroup.leave()
             }
             
-            // wip add effects due to future food entries, for carb-correction purposes
+            // effects due to future food entries, for carb-correction purposes
             updateGroup.enter()
             carbStore.getGlucoseEffectsFutureFood(
                 start: Date().addingTimeInterval(.minutes(-15.0)),
@@ -754,9 +758,22 @@ extension LoopDataManager {
             }
         }
         
-        // carb correction recommendation, do only if data has been updated
+        // carb correction recommendation
         if suggestedCarbCorrection == nil {
             try updateCarbCorrection()
+            carbCorrection.insulinEffect = insulinEffect
+            carbCorrection.carbEffect = carbEffect
+            carbCorrection.carbEffectFutureFood = carbEffectFutureFood
+            carbCorrection.glucoseMomentumEffect = glucoseMomentumEffect
+            carbCorrection.zeroTempEffect = zeroTempEffect
+            carbCorrection.standardRetrospectiveGlucoseEffect = standardRetrospectiveGlucoseEffect
+            carbCorrection.retrospectiveGlucoseEffect = retrospectiveGlucoseEffect
+            carbCorrection.retrospectiveGlucoseDiscrepancies = retrospectiveGlucoseDiscrepancies
+            carbCorrection.retrospectiveGlucoseDiscrepanciesSummed = retrospectiveGlucoseDiscrepanciesSummed
+            carbCorrection.insulinCounteractionEffects = insulinCounteractionEffects
+            if let latestGlucose = self.glucoseStore.latestGlucose {
+                try carbCorrection.updateCarbCorrection(latestGlucose)
+            }
         }
         
     }
