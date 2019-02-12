@@ -760,7 +760,7 @@ extension LoopDataManager {
         
         // carb correction recommendation
         if suggestedCarbCorrection == nil {
-            try updateCarbCorrection()
+            // wip-remove-LoopDataManager-implmentation try updateCarbCorrection()
             carbCorrection.insulinEffect = insulinEffect
             carbCorrection.carbEffect = carbEffect
             carbCorrection.carbEffectFutureFood = carbEffectFutureFood
@@ -772,7 +772,7 @@ extension LoopDataManager {
             carbCorrection.retrospectiveGlucoseDiscrepanciesSummed = retrospectiveGlucoseDiscrepanciesSummed
             carbCorrection.insulinCounteractionEffects = insulinCounteractionEffects
             if let latestGlucose = self.glucoseStore.latestGlucose {
-                try carbCorrection.updateCarbCorrection(latestGlucose)
+                try suggestedCarbCorrection = carbCorrection.updateCarbCorrection(latestGlucose)
             }
         }
         

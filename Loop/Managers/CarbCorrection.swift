@@ -31,8 +31,8 @@ class CarbCorrection {
     public var retrospectiveGlucoseDiscrepancies: [GlucoseEffect]?
     public var retrospectiveGlucoseDiscrepanciesSummed: [GlucoseChange]?
     
-    public var suggestedCarbCorrection: Int?
-    public var glucose: GlucoseValue?
+    var suggestedCarbCorrection: Int?
+    var glucose: GlucoseValue?
     
     /**
      Carb correction math parameters:
@@ -80,7 +80,7 @@ class CarbCorrection {
      */
     
     // carb correction recommendation
-    public func updateCarbCorrection(_ glucose: GlucoseValue) throws {
+    public func updateCarbCorrection(_ glucose: GlucoseValue) throws -> Int? {
 
         NSLog("myLoop: +++ CarbCorrectionClass +++")
         self.glucose = glucose
@@ -184,7 +184,7 @@ class CarbCorrection {
             
         }
         
-        return
+        return( suggestedCarbCorrection )
     }
     
     // carb correction for effects
