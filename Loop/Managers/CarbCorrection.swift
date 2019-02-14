@@ -184,6 +184,7 @@ class CarbCorrection {
             
         }
         
+        linearRegressionFit()
         return( suggestedCarbCorrection )
     }
     
@@ -286,6 +287,24 @@ class CarbCorrection {
         }
         
         return prediction
+    }
+    
+    /// linear regression filter for discrepancies and for insulin counteraction
+    fileprivate func linearRegressionFit() {
+        let now = Date()
+        let discrepancies = retrospectiveGlucoseDiscrepancies?.filterDateRange(now.addingTimeInterval(.minutes(-20)), now)
+        if let discrepancyValues = discrepancies?.map( { $0.quantity.doubleValue(for: unit) } ) {
+            for discrepancy in discrepancyValues {
+                NSLog("myLoop: recent discrepancy: %4.2f", discrepancy)
+            }
+        }
+        
+        if let countercations = insulinCounteractionEffects?.filterDateRange(now.addingTimeInterval(.minutes(-20)), now) {
+            let counteractionValues = countercations.map( { $0.effect.quantity.doubleValue(for: unit) } )
+            for counteraction in counteractionValues {
+                NSLog("myLoop: recent conteraction: %4.2f", counteraction)
+            }
+        }
     }
 
 }
