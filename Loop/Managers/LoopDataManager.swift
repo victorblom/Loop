@@ -838,10 +838,6 @@ extension LoopDataManager {
             effects.append(carbEffect)
         }
         
-        if inputs.contains(.futureCarbs), let futureCarbEffect = self.carbEffectFutureFood {
-            effects.append(futureCarbEffect)
-        }
-        
         if inputs.contains(.insulin), let insulinEffect = self.insulinEffect {
             effects.append(insulinEffect)
         }
@@ -852,10 +848,6 @@ extension LoopDataManager {
 
         if inputs.contains(.retrospection) {
             effects.append(self.retrospectiveGlucoseEffect)
-        } else {
-            if inputs.contains(.standardRetrospection) {
-                effects.append(self.standardRetrospectiveGlucoseEffect)
-            }
         }
         
         if inputs.contains(.zeroTemp) {
