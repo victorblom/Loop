@@ -236,8 +236,11 @@ struct NotificationManager {
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [Category.pumpReservoirLow.rawValue])
     }
     
-    static func sendCarbCorrectionNotification(_ grams: Int, _ lowPredictedIn: TimeInterval?) {
+    static func sendCarbCorrectionNotification(_ carbCorrectionNotification: CarbCorrectionNotification) {
         let notification = UNMutableNotificationContent()
+        let grams = carbCorrectionNotification.grams
+        let lowPredictedIn = carbCorrectionNotification.lowPredictedIn
+        let correctionType = carbCorrectionNotification.type
         
         notification.title = NSLocalizedString("Carb Correction", comment: "The notification title for carb correction")
         
@@ -250,14 +253,20 @@ struct NotificationManager {
         intervalFormatter.includesApproximationPhrase = false
         intervalFormatter.includesTimeRemainingPhrase = false
         
-        if let lowPredictedIn = lowPredictedIn, let timeString = intervalFormatter.string(from: lowPredictedIn) {
-            if lowPredictedIn < TimeInterval(minutes: 15) {
-                notification.body = String(format: NSLocalizedString("%1$@ g Recommended", comment: "Carb correction for imminent low alert format string. (1: Recommended correction grams)"), gramsString)
+        if correctionType == .correction {
+            if let lowPredictedIn = lowPredictedIn, let timeString = intervalFormatter.string(from: lowPredictedIn) {
+                if lowPredictedIn < TimeInterval(minutes: 15) {
+                    notification.body = String(format: NSLocalizedString("%1$@ g Recommended", comment: "Carb correction for imminent low alert format string. (1: Recommended correction grams)"), gramsString)
+                } else {
+                    notification.body = String(format: NSLocalizedString("%1$@ g Recommended to Treat Low Predicted in %2$@", comment: "Carb correction with time to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)"), gramsString, timeString)
+                }
             } else {
-                notification.body = String(format: NSLocalizedString("%1$@ g Recommended to Treat Low Predicted in %2$@", comment: "Carb correction with time to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)"), gramsString, timeString)
+                notification.body = String(format: NSLocalizedString("Recommended: %1$@ g", comment: "Carb correction alert format string. (1: Recommended correction grams)"), gramsString)
             }
-        } else {
-            notification.body = String(format: NSLocalizedString("Recommended: %1$@ g", comment: "Carb correction alert format string. (1: Recommended correction grams)"), gramsString)
+        }
+        
+        if correctionType == .warning {
+            notification.body = String(format: NSLocalizedString("Warning: check carb absorption!", comment: "Slow carb absorption warning string."))
         }
         
         notification.sound = UNNotificationSound.default()

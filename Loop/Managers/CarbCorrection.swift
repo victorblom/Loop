@@ -33,6 +33,8 @@ class CarbCorrection {
     
     var suggestedCarbCorrection: Int?
     var glucose: GlucoseValue?
+    var modeledCarbOnlyGlucose: [GlucoseValue]?
+    var modeledCarbEffect: GlucoseEffect?
     
     /**
      Carb correction math parameters:
@@ -113,6 +115,8 @@ class CarbCorrection {
         var timeToLowCandidate: TimeInterval?
         var missingCarbGrams: Int = 0
         
+        var carbCorrectionNotification: CarbCorrectionNotification
+        
         do {
             var effects: PredictionInputEffect = [.carbs, .insulin, .momentum, .standardRetrospection, .zeroTemp]
             (carbCorrection, timeToLow) = try carbsRequired(effects: effects)
@@ -136,6 +140,9 @@ class CarbCorrection {
             }
             missingCarbGrams = Int(ceil(carbs))
             
+            effects = [.carbs]
+            modeledCarbOnlyGlucose = try predictGlucose(using: effects)
+            
         } catch {
             throw LoopError.invalidData(details: "predictedGlucose failed, updateCarbCorrection failed")
         }
@@ -145,7 +152,11 @@ class CarbCorrection {
             let carbCorrectionGrams = Int(ceil(carbCorrectionFactor * carbCorrection))
             suggestedCarbCorrection = carbCorrectionGrams
             if carbCorrectionGrams >= carbCorrectionThreshold {
-                NotificationManager.sendCarbCorrectionNotification(carbCorrectionGrams, timeToLow)
+                carbCorrectionNotification.grams = carbCorrectionGrams
+                carbCorrectionNotification.lowPredictedIn = timeToLow
+                carbCorrectionNotification.type = .correction
+                NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
+
             } else {
                 NotificationManager.clearCarbCorrectionNotification()
                 NotificationManager.sendCarbCorrectionNotificationBadge(carbCorrectionGrams)
@@ -178,7 +189,11 @@ class CarbCorrection {
                 if missingCarbGrams >= carbCorrectionThreshold && expectedCarbEffect > carbEffectThreshold && carbAbsorbingFraction < warningThreshold {
                     NSLog("myLoop: WARNING! (check carbs)")
                     // wip missing carbs warning notification
-                    NotificationManager.sendCarbCorrectionNotification(0, nil)
+                    carbCorrectionNotification.grams = missingCarbGrams
+                    carbCorrectionNotification.lowPredictedIn = nil
+                    carbCorrectionNotification.type = .warning
+                    NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
+
                 }
             }
             
@@ -301,10 +316,35 @@ class CarbCorrection {
         
         if let countercations = insulinCounteractionEffects?.filterDateRange(now.addingTimeInterval(.minutes(-20)), now) {
             let counteractionValues = countercations.map( { $0.effect.quantity.doubleValue(for: unit) } )
-            for counteraction in counteractionValues {
-                NSLog("myLoop: recent conteraction: %4.2f", counteraction)
+            let counteractionTimes = countercations.map( { $0.effect.startDate.timeIntervalSince(now).minutes } )
+            for counteractionValue in counteractionValues {
+                NSLog("myLoop: counteraction %4.2f", counteractionValue)
+            }
+            for counteractionTime in counteractionTimes {
+                NSLog("myLoop: ca time %4.2f", counteractionTime)
             }
         }
+        
+        if let predictionCount = modeledCarbOnlyGlucose?.count {
+            if predictionCount >= 3 {
+                if let glucose1 = modeledCarbOnlyGlucose?[1].quantity.doubleValue(for: unit) {
+                    if let glucose2 = modeledCarbOnlyGlucose?[2].quantity.doubleValue(for: unit) {
+                        let modeledCarbEffect = glucose2 - glucose1
+                        NSLog("myLoop: modeled carb effect %4.2f", modeledCarbEffect)
+                    }
+                }
+            }
+        }
+        
     }
 
 }
+
+struct CorrectionOption: OptionSet {
+    let rawValue: Int
+    
+    static let correction = CorrectionOption(rawValue: 1 << 0)
+    static let warning = CorrectionOption(rawValue: 1 << 1)
+}
+
+typealias CarbCorrectionNotification = (grams: Int, lowPredictedIn: TimeInterval?, type: CorrectionOption )
