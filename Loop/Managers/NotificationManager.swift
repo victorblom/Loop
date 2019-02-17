@@ -266,7 +266,7 @@ struct NotificationManager {
         }
         
         if correctionType == .warning {
-            notification.body = String(format: NSLocalizedString("Warning: check carb absorption!", comment: "Slow carb absorption warning string."))
+            notification.body = String(format: NSLocalizedString("Warning: Slow Absorbing %1$@ g", comment: "Slow carb absorption warning string."), gramsString)
         }
         
         notification.sound = UNNotificationSound.default()

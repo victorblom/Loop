@@ -199,7 +199,7 @@ class CarbCorrection {
             
         }
         
-        linearRegressionFit()
+        checkCarbAbsorption()
         return( suggestedCarbCorrection )
     }
     
@@ -304,8 +304,8 @@ class CarbCorrection {
         return prediction
     }
     
-    /// linear regression filter for discrepancies and for insulin counteraction
-    fileprivate func linearRegressionFit() {
+    /// compare counteraction to modeled carb absorption
+    fileprivate func checkCarbAbsorption() {
         let now = Date()
         let discrepancies = retrospectiveGlucoseDiscrepancies?.filterDateRange(now.addingTimeInterval(.minutes(-20)), now)
         if let discrepancyValues = discrepancies?.map( { $0.quantity.doubleValue(for: unit) } ) {
@@ -314,16 +314,22 @@ class CarbCorrection {
             }
         }
         
-        if let countercations = insulinCounteractionEffects?.filterDateRange(now.addingTimeInterval(.minutes(-20)), now) {
-            let counteractionValues = countercations.map( { $0.effect.quantity.doubleValue(for: unit) } )
-            let counteractionTimes = countercations.map( { $0.effect.startDate.timeIntervalSince(now).minutes } )
-            for counteractionValue in counteractionValues {
-                NSLog("myLoop: counteraction %4.2f", counteractionValue)
+        if let counterActions = insulinCounteractionEffects?.filterDateRange(now.addingTimeInterval(.minutes(-20)), now) {
+            let counterActionValues = counterActions.map( { $0.effect.quantity.doubleValue(for: unit) } )
+            let counteractionTimes = counterActions.map( { $0.effect.startDate.timeIntervalSince(now).minutes } )
+            for counterActionValue in counterActionValues {
+                NSLog("myLoop: counteraction %4.2f", counterActionValue)
             }
             for counteractionTime in counteractionTimes {
                 NSLog("myLoop: ca time %4.2f", counteractionTime)
             }
+            if counterActionValues.count > 2 {
+                let insulinCounterActionFit = linearRegression(counteractionTimes, counterActionValues)
+                let expectedCounterAction = insulinCounterActionFit(5.0)
+                NSLog("myLoop: predicted counteraction: %4.2f", expectedCounterAction)
+            }
         }
+        
         
         if let predictionCount = modeledCarbOnlyGlucose?.count {
             if predictionCount >= 3 {
@@ -337,14 +343,30 @@ class CarbCorrection {
         }
         
     }
+    
+    fileprivate func average(_ input: [Double]) -> Double {
+        return input.reduce(0, +) / Double(input.count)
+    }
+    
+    fileprivate func multiply(_ a: [Double], _ b: [Double]) -> [Double] {
+        return zip(a,b).map(*)
+    }
+    
+    fileprivate func linearRegression(_ xs: [Double], _ ys: [Double]) -> (Double) -> Double {
+        let sum1 = average(multiply(ys, xs)) - average(xs) * average(ys)
+        let sum2 = average(multiply(xs, xs)) - pow(average(xs), 2)
+        let slope = sum1 / sum2
+        let intercept = average(ys) - slope * average(xs)
+        return { x in intercept + slope * x }
+    }
 
 }
 
-struct CorrectionOption: OptionSet {
+struct CarbCorrectionNotificationOption: OptionSet {
     let rawValue: Int
     
-    static let correction = CorrectionOption(rawValue: 1 << 0)
-    static let warning = CorrectionOption(rawValue: 1 << 1)
+    static let correction = CarbCorrectionNotificationOption(rawValue: 1 << 0)
+    static let warning = CarbCorrectionNotificationOption(rawValue: 1 << 1)
 }
 
-typealias CarbCorrectionNotification = (grams: Int, lowPredictedIn: TimeInterval?, type: CorrectionOption )
+typealias CarbCorrectionNotification = (grams: Int, lowPredictedIn: TimeInterval?, type: CarbCorrectionNotificationOption)
