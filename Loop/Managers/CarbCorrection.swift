@@ -33,8 +33,6 @@ class CarbCorrection {
     
     var suggestedCarbCorrection: Int?
     var glucose: GlucoseValue?
-    var modeledCarbOnlyGlucose: [GlucoseValue]?
-    var modeledCarbEffect: GlucoseEffect?
     
     /**
      Carb correction math parameters:
@@ -140,9 +138,6 @@ class CarbCorrection {
             }
             missingCarbGrams = Int(ceil(carbs))
             
-            effects = [.carbs]
-            modeledCarbOnlyGlucose = try predictGlucose(using: effects)
-            
         } catch {
             throw LoopError.invalidData(details: "predictedGlucose failed, updateCarbCorrection failed")
         }
@@ -199,7 +194,19 @@ class CarbCorrection {
             
         }
         
-        checkCarbAbsorption()
+        guard let counteraction = latestInsulinCounteraction() else {
+            return( suggestedCarbCorrection )
+        }
+        
+        guard let modeledCarb = try modeledCarbAbsorption() else {
+            return( suggestedCarbCorrection )
+        }
+        
+        if modeledCarb > 0.0 {
+            let latestAbsorbingFraction = counteraction / modeledCarb
+            NSLog("myLoop: new absorbing fraction = %4.2f", 100 * latestAbsorbingFraction)
+        }
+
         return( suggestedCarbCorrection )
     }
     
@@ -304,44 +311,69 @@ class CarbCorrection {
         return prediction
     }
     
-    /// compare counteraction to modeled carb absorption
-    fileprivate func checkCarbAbsorption() {
-        let now = Date()
-        let discrepancies = retrospectiveGlucoseDiscrepancies?.filterDateRange(now.addingTimeInterval(.minutes(-20)), now)
-        if let discrepancyValues = discrepancies?.map( { $0.quantity.doubleValue(for: unit) } ) {
-            for discrepancy in discrepancyValues {
-                NSLog("myLoop: recent discrepancy: %4.2f", discrepancy)
-            }
+    // get modeled carb absorption
+    fileprivate func modeledCarbAbsorption() throws -> Double? {
+        let effects: PredictionInputEffect = [.carbs]
+
+        var modeledCarbOnlyGlucose: [GlucoseValue]?
+        var modeledCarbEffect: Double?
+        
+        do {
+            modeledCarbOnlyGlucose = try predictGlucose(using: effects)
+        }
+        catch {
+            throw LoopError.invalidData(details: "Unable to calculate glucose based on carb effects only")
         }
         
-        if let counterActions = insulinCounteractionEffects?.filterDateRange(now.addingTimeInterval(.minutes(-20)), now) {
-            let counterActionValues = counterActions.map( { $0.effect.quantity.doubleValue(for: unit) } )
-            let counteractionTimes = counterActions.map( { $0.effect.startDate.timeIntervalSince(now).minutes } )
-            for counterActionValue in counterActionValues {
-                NSLog("myLoop: counteraction %4.2f", counterActionValue)
-            }
-            for counteractionTime in counteractionTimes {
-                NSLog("myLoop: ca time %4.2f", counteractionTime)
-            }
-            if counterActionValues.count > 2 {
-                let insulinCounterActionFit = linearRegression(counteractionTimes, counterActionValues)
-                let expectedCounterAction = insulinCounterActionFit(5.0)
-                NSLog("myLoop: predicted counteraction: %4.2f", expectedCounterAction)
-            }
+        guard let predictionCount = modeledCarbOnlyGlucose?.count else {
+            return( modeledCarbEffect )
         }
         
-        
-        if let predictionCount = modeledCarbOnlyGlucose?.count {
-            if predictionCount >= 3 {
-                if let glucose1 = modeledCarbOnlyGlucose?[1].quantity.doubleValue(for: unit) {
-                    if let glucose2 = modeledCarbOnlyGlucose?[2].quantity.doubleValue(for: unit) {
-                        let modeledCarbEffect = glucose2 - glucose1
-                        NSLog("myLoop: modeled carb effect %4.2f", modeledCarbEffect)
-                    }
-                }
-            }
+        guard predictionCount >= 3 else {
+            return( modeledCarbEffect )
         }
         
+        guard let glucose1 = modeledCarbOnlyGlucose?[1].quantity.doubleValue(for: unit), let glucose2 = modeledCarbOnlyGlucose?[2].quantity.doubleValue(for: unit) else {
+            return( modeledCarbEffect )
+        }
+        
+        modeledCarbEffect = glucose2 - glucose1
+        NSLog("myLoop: modeled carb effect %4.2f", modeledCarbEffect!)
+        
+        return( modeledCarbEffect )
+    }
+  
+    // counteraction
+    fileprivate func latestInsulinCounteraction() -> Double? {
+        
+        var counteraction: Double?
+        
+        guard let latestGlucoseDate = glucose?.startDate else {
+            return( counteraction )
+        }
+        
+        guard let counterActions = insulinCounteractionEffects?.filterDateRange(latestGlucoseDate.addingTimeInterval(.minutes(-20)), latestGlucoseDate) else {
+            return( counteraction )
+        }
+        
+        let counteractionValues = counterActions.map( { $0.effect.quantity.doubleValue(for: unit) } )
+        let counteractionTimes = counterActions.map( { $0.effect.startDate.timeIntervalSince(latestGlucoseDate).minutes } )
+        for counteractionValue in counteractionValues {
+            NSLog("myLoop: counteraction %4.2f", counteractionValue)
+        }
+        for counteractionTime in counteractionTimes {
+            NSLog("myLoop: counteraction time %4.2f", counteractionTime)
+        }
+
+        guard counteractionValues.count > 2 else {
+            return( counteraction )
+        }
+        
+        let insulinCounteractionFit = linearRegression(counteractionTimes, counteractionValues)
+        counteraction = insulinCounteractionFit(0.0)
+        NSLog("myLoop: predicted counteraction: %4.2f", counteraction!)
+        
+        return( counteraction )
     }
     
     fileprivate func average(_ input: [Double]) -> Double {
