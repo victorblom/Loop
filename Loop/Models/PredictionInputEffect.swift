@@ -19,7 +19,7 @@ struct PredictionInputEffect: OptionSet {
     static let retrospection    = PredictionInputEffect(rawValue: 1 << 3)
     static let zeroTemp         = PredictionInputEffect(rawValue: 1 << 4)
     static let standardRetrospection = PredictionInputEffect(rawValue: 1 << 5)
-    static let futureCarbs      = PredictionInputEffect(rawValue: 1 << 6)
+    static let unexpiredCarbs      = PredictionInputEffect(rawValue: 1 << 6)
 
     static let all: PredictionInputEffect = [.carbs, .insulin, .momentum, .retrospection]
 

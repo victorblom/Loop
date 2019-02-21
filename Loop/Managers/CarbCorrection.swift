@@ -84,6 +84,7 @@ class CarbCorrection {
 
         NSLog("myLoop: +++ CarbCorrectionClass +++")
         self.glucose = glucose
+        suggestedCarbCorrection = nil
         
         guard glucoseMomentumEffect != nil else {
             NSLog("myLoop: ERROR momentum not set ")
@@ -105,15 +106,50 @@ class CarbCorrection {
             throw LoopError.invalidData(details: "zeroTempEffect not available, updateCarbCorrection failed")
         }
         
-        let carbCorrectionThreshold: Int = 4 // do not bother with carb correction notifications below this value, only display badge
+        let carbCorrectionThreshold: Int = 2 // do not bother with carb correction notifications below this value, only display badge
         let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
+        let expireCarbsThreshold: Double = 0.25 // absorption rate below this fraction of modeled carb absorption triggers expiration of past carbs
         
         var carbCorrection: Double = 0.0
+        var carbCorrectionExpiredCarbs: Double = 0.0
         var timeToLow: TimeInterval?
+        var timeToLowExpiredCarbs: TimeInterval?
         var timeToLowCandidate: TimeInterval?
-        var missingCarbGrams: Int = 0
+        var remainingCarbGrams: Int = 0
         
         var carbCorrectionNotification: CarbCorrectionNotification
+        
+        var effects: PredictionInputEffect = [.carbs, .insulin, .momentum, .zeroTemp]
+        do {
+            (carbCorrection, timeToLow) = try carbsRequired(effects: effects)
+        } catch {
+            throw LoopError.invalidData(details: "Could not compute carbs required, updateCarbCorrection failed")
+        }
+        
+        let counteraction = latestInsulinCounteraction()
+        guard let currentCounteraction = counteraction.currentCounteraction, let averageCounteraction = counteraction.averageCounteraction else {
+            return( suggestedCarbCorrection )
+        }
+        
+        guard let modeledCarbEffect = try modeledCarbAbsorption() else {
+            return( suggestedCarbCorrection )
+        }
+        
+        if modeledCarbEffect > 0.0 {
+            let currentAbsorbingFraction = currentCounteraction / modeledCarbEffect
+            let averageAbsorbingFraction = averageCounteraction / modeledCarbEffect
+            NSLog("myLoop: current absorbing fraction = %4.2f", currentAbsorbingFraction)
+            NSLog("myLoop: average absorbing fraction = %4.2f", averageAbsorbingFraction)
+            if (currentAbsorbingFraction < expireCarbsThreshold && averageAbsorbingFraction < expireCarbsThreshold) {
+                effects = [.unexpiredCarbs, .insulin, .momentum, .zeroTemp]
+                do {
+                    (carbCorrectionExpiredCarbs, timeToLowExpiredCarbs) = try carbsRequired(effects: effects)
+                } catch {
+                    throw LoopError.invalidData(details: "Could not compute carbs required when past carbs expired, updateCarbCorrection failed")
+                }
+                NSLog("myLoop: carb correction with expired carbs = %4.2f", carbCorrectionExpiredCarbs)
+            }
+        }
         
         do {
             var effects: PredictionInputEffect = [.carbs, .insulin, .momentum, .standardRetrospection, .zeroTemp]
@@ -129,14 +165,14 @@ class CarbCorrection {
                 timeToLow = timeToLowCandidate
             }
             
-            effects = [.futureCarbs, .insulin, .momentum, .zeroTemp]
+            effects = [.unexpiredCarbs, .insulin, .momentum, .zeroTemp]
             (carbs, timeToLowCandidate) = try carbsRequired(effects: effects)
             NSLog("myLoop insulin only %4.2f in %4.2f minutes", carbs, timeToLowCandidate?.minutes ?? -1.0)
             if carbs < carbCorrection {
                 carbCorrection = carbs
                 timeToLow = timeToLowCandidate
             }
-            missingCarbGrams = Int(ceil(carbs))
+            remainingCarbGrams = Int(ceil(carbs))
             
         } catch {
             throw LoopError.invalidData(details: "predictedGlucose failed, updateCarbCorrection failed")
@@ -181,10 +217,10 @@ class CarbCorrection {
                     carbAbsorbingFraction = counteraction / expectedCarbEffect
                 }
                 NSLog("myLoop: absorbing fraction %4.2f", 100 * carbAbsorbingFraction)
-                if missingCarbGrams >= carbCorrectionThreshold && expectedCarbEffect > carbEffectThreshold && carbAbsorbingFraction < warningThreshold {
+                if remainingCarbGrams >= carbCorrectionThreshold && expectedCarbEffect > carbEffectThreshold && carbAbsorbingFraction < warningThreshold {
                     NSLog("myLoop: WARNING! (check carbs)")
                     // wip missing carbs warning notification
-                    carbCorrectionNotification.grams = missingCarbGrams
+                    carbCorrectionNotification.grams = remainingCarbGrams
                     carbCorrectionNotification.lowPredictedIn = nil
                     carbCorrectionNotification.type = .warning
                     NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
@@ -192,19 +228,6 @@ class CarbCorrection {
                 }
             }
             
-        }
-        
-        guard let counteraction = latestInsulinCounteraction() else {
-            return( suggestedCarbCorrection )
-        }
-        
-        guard let modeledCarb = try modeledCarbAbsorption() else {
-            return( suggestedCarbCorrection )
-        }
-        
-        if modeledCarb > 0.0 {
-            let latestAbsorbingFraction = counteraction / modeledCarb
-            NSLog("myLoop: new absorbing fraction = %4.2f", 100 * latestAbsorbingFraction)
         }
 
         return( suggestedCarbCorrection )
@@ -275,7 +298,7 @@ class CarbCorrection {
             effects.append(carbEffect)
         }
         
-        if inputs.contains(.futureCarbs), let futureCarbEffect = self.carbEffectFutureFood {
+        if inputs.contains(.unexpiredCarbs), let futureCarbEffect = self.carbEffectFutureFood {
             effects.append(futureCarbEffect)
         }
         
@@ -344,9 +367,9 @@ class CarbCorrection {
     }
   
     // counteraction
-    fileprivate func latestInsulinCounteraction() -> Double? {
+    fileprivate func latestInsulinCounteraction() -> Counteraction {
         
-        var counteraction: Double?
+        var counteraction: Counteraction
         
         guard let latestGlucoseDate = glucose?.startDate else {
             return( counteraction )
@@ -370,8 +393,10 @@ class CarbCorrection {
         }
         
         let insulinCounteractionFit = linearRegression(counteractionTimes, counteractionValues)
-        counteraction = insulinCounteractionFit(0.0)
-        NSLog("myLoop: predicted counteraction: %4.2f", counteraction!)
+        counteraction.currentCounteraction = insulinCounteractionFit(0.0)
+        counteraction.averageCounteraction = average( counteractionValues )
+        NSLog("myLoop: current counteraction: %4.2f", counteraction.currentCounteraction!)
+        NSLog("myLoop: average counteraction: %4.2f", counteraction.averageCounteraction!)
         
         return( counteraction )
     }
@@ -402,3 +427,5 @@ struct CarbCorrectionNotificationOption: OptionSet {
 }
 
 typealias CarbCorrectionNotification = (grams: Int, lowPredictedIn: TimeInterval?, type: CarbCorrectionNotificationOption)
+
+typealias Counteraction = (currentCounteraction: Double?, averageCounteraction: Double?)
