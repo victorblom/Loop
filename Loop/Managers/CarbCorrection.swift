@@ -192,6 +192,7 @@ class CarbCorrection {
     }
     
     // carb correction for effects
+    // TO DO: clean up
     private func carbsRequired(effects: PredictionInputEffect) throws -> (Double, TimeInterval?) {
         
         var carbCorrection: Double = 0.0
@@ -246,9 +247,7 @@ class CarbCorrection {
     /// - Throws: LoopError.missingDataError
     fileprivate func predictGlucose(using inputs: PredictionInputEffect) throws -> [GlucoseValue] {
         
-        let insulinModelSettings: InsulinModelSettings? = UserDefaults.appGroup.insulinModelSettings
-        
-        guard let model = insulinModelSettings?.model else {
+        guard let model = UserDefaults.appGroup.insulinModelSettings?.model else {
             throw LoopError.configurationError(.insulinModel)
         }
         
@@ -273,14 +272,6 @@ class CarbCorrection {
         
         if inputs.contains(.momentum), let momentumEffect = self.glucoseMomentumEffect {
             momentum = momentumEffect
-        }
-        
-        if inputs.contains(.retrospection) {
-            effects.append(self.retrospectiveGlucoseEffect!)
-        } else {
-            if inputs.contains(.standardRetrospection) {
-                effects.append(self.standardRetrospectiveGlucoseEffect!)
-            }
         }
         
         if inputs.contains(.zeroTemp) {
