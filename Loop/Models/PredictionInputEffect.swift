@@ -34,7 +34,7 @@ struct PredictionInputEffect: OptionSet {
         case [.retrospection]:
             return NSLocalizedString("Retrospective Correction", comment: "Title of the prediction input effect for retrospective correction")
         case [.zeroTemp]:
-            return NSLocalizedString("Zero Temping", comment: "Title of the prediction input effect for zero temping")
+            return NSLocalizedString("Suspension of Insulin Delivery", comment: "Title of the prediction input effect for zero temping")
         default:
             return nil
         }
@@ -51,7 +51,7 @@ struct PredictionInputEffect: OptionSet {
         case [.retrospection]:
             return NSLocalizedString("30 min comparison of glucose prediction vs actual, continued with decay over 60 min", comment: "Description of the prediction input effect for retrospective correction")
         case [.zeroTemp]:
-            return NSLocalizedString("Glucose effect of zero temping", comment: "Description of the prediction input effect for zero temping")
+            return NSLocalizedString("Glucose effect of suspending insulin delivery by setting temporary basal rate to zero", comment: "Description of the prediction input effect for zero temping")
         default:
             return nil
         }
