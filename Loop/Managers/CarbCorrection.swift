@@ -114,8 +114,8 @@ class CarbCorrection {
         
         var carbCorrection: Double = 0.0
         var carbCorrectionExpiredCarbs: Double = 0.0
-        var timeToLow: TimeInterval?
-        var timeToLowExpiredCarbs: TimeInterval?
+        var timeToLow: TimeInterval = TimeInterval.minutes(0.0)
+        var timeToLowExpiredCarbs: TimeInterval = TimeInterval.minutes(0.0)
         
         var carbCorrectionNotification: CarbCorrectionNotification
         
@@ -145,9 +145,9 @@ class CarbCorrection {
         carbCorrectionNotification.grams = Int(ceil(carbCorrectionFactor * carbCorrection))
         suggestedCarbCorrection = carbCorrectionNotification.grams
         carbCorrectionNotification.lowPredictedIn = timeToLow
-        NSLog("myLoop correction %d in %4.2f minutes", carbCorrectionNotification.grams, timeToLow?.minutes ?? -1.0)
+        NSLog("myLoop correction %d in %4.2f minutes", carbCorrectionNotification.grams, timeToLow.minutes)
         carbCorrectionNotification.gramsRemaining = Int(ceil(carbCorrectionFactor * carbCorrectionExpiredCarbs))
-        NSLog("myLoop warning %d in %4.2f minutes", carbCorrectionNotification.gramsRemaining, timeToLowExpiredCarbs?.minutes ?? -1.0)
+        NSLog("myLoop warning %d in %4.2f minutes", carbCorrectionNotification.gramsRemaining, timeToLowExpiredCarbs.minutes)
         carbCorrectionNotification.type = .noCorrection
         
         // no correction needed
@@ -193,10 +193,10 @@ class CarbCorrection {
     
     // carb correction for effects
     // TO DO: clean up
-    private func carbsRequired(effects: PredictionInputEffect) throws -> (Double, TimeInterval?) {
+    private func carbsRequired(effects: PredictionInputEffect) throws -> (Double, TimeInterval) {
         
         var carbCorrection: Double = 0.0
-        var timeToLow: TimeInterval?
+        var timeToLow: TimeInterval = TimeInterval.minutes(0.0)
         
         let carbRatioSchedule: CarbRatioSchedule? = UserDefaults.appGroup.carbRatioSchedule
         let insulinModelSettings: InsulinModelSettings? = UserDefaults.appGroup.insulinModelSettings
@@ -384,6 +384,6 @@ struct CarbCorrectionNotificationOption: OptionSet {
     static let correctionWarning = CarbCorrectionNotificationOption(rawValue: 1 << 3)
 }
 
-typealias CarbCorrectionNotification = (grams: Int, lowPredictedIn: TimeInterval?, gramsRemaining: Int, type: CarbCorrectionNotificationOption)
+typealias CarbCorrectionNotification = (grams: Int, lowPredictedIn: TimeInterval, gramsRemaining: Int, type: CarbCorrectionNotificationOption)
 
 typealias Counteraction = (currentCounteraction: Double?, averageCounteraction: Double?)
