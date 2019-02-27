@@ -40,6 +40,9 @@ class CarbCorrection {
      */
     let carbCorrectionSkipFraction: Double = 0.4
     let delta: TimeInterval = TimeInterval(minutes: 5.0)
+    let carbCorrectionThreshold: Int = 2 // do not bother with carb correction notifications below this value, only display badge
+    let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
+    let expireCarbsThreshold: Double = 0.25 // absorption rate below this fraction of modeled carb absorption triggers expiration of past carbs
     
     /// All math is performed with glucose expressed in mg/dL
     private let unit = HKUnit.milligramsPerDeciliter
@@ -49,14 +52,8 @@ class CarbCorrection {
     
     let carbCorrectionAbsorptionTime: TimeInterval
     
-    let basalRateSchedule: BasalRateSchedule? = UserDefaults.appGroup.basalRateSchedule
-    let carbRatioSchedule: CarbRatioSchedule? = UserDefaults.appGroup.carbRatioSchedule
-    let insulinModelSettings: InsulinModelSettings? = UserDefaults.appGroup.insulinModelSettings
-    let insulinSensitivitySchedule: InsulinSensitivitySchedule? = UserDefaults.appGroup.insulinSensitivitySchedule
-    let settings: LoopSettings = UserDefaults.appGroup.loopSettings ?? LoopSettings()
-    
     /**
-     Initialize integral retrospective correction settings based on current values of user settings
+     Initialize
      
      - Parameters:
      - settings: User settings
@@ -106,16 +103,21 @@ class CarbCorrection {
             throw LoopError.invalidData(details: "zeroTempEffect not available, updateCarbCorrection failed")
         }
         
-        let carbCorrectionThreshold: Int = 2 // do not bother with carb correction notifications below this value, only display badge
-        let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
-        let expireCarbsThreshold: Double = 0.25 // absorption rate below this fraction of modeled carb absorption triggers expiration of past carbs
+        let counteraction = recentInsulinCounteraction()
+        guard let currentCounteraction = counteraction.currentCounteraction, let averageCounteraction = counteraction.averageCounteraction else {
+            return( suggestedCarbCorrection )
+        }
+        
+        guard let modeledCarbEffect = modeledCarbAbsorption() else {
+            return( suggestedCarbCorrection )
+        }
         
         var carbCorrection: Double = 0.0
         var carbCorrectionExpiredCarbs: Double = 0.0
         var timeToLow: TimeInterval?
         var timeToLowExpiredCarbs: TimeInterval?
-        var timeToLowCandidate: TimeInterval?
-        var remainingCarbGrams: Int = 0
+        //var timeToLowCandidate: TimeInterval?
+        //var remainingCarbGrams: Int = 0
         
         var carbCorrectionNotification: CarbCorrectionNotification
         
@@ -124,15 +126,6 @@ class CarbCorrection {
             (carbCorrection, timeToLow) = try carbsRequired(effects: effects)
         } catch {
             throw LoopError.invalidData(details: "Could not compute carbs required, updateCarbCorrection failed")
-        }
-        
-        let counteraction = latestInsulinCounteraction()
-        guard let currentCounteraction = counteraction.currentCounteraction, let averageCounteraction = counteraction.averageCounteraction else {
-            return( suggestedCarbCorrection )
-        }
-        
-        guard let modeledCarbEffect = try modeledCarbAbsorption() else {
-            return( suggestedCarbCorrection )
         }
         
         if modeledCarbEffect > 0.0 {
@@ -151,6 +144,50 @@ class CarbCorrection {
             }
         }
         
+        carbCorrectionNotification.grams = Int(ceil(carbCorrectionFactor * carbCorrection))
+        suggestedCarbCorrection = carbCorrectionNotification.grams
+        carbCorrectionNotification.lowPredictedIn = timeToLow
+        NSLog("myLoop correction %d in %4.2f minutes", carbCorrectionNotification.grams, timeToLow?.minutes ?? -1.0)
+        carbCorrectionNotification.gramsRemaining = Int(ceil(carbCorrectionFactor * carbCorrectionExpiredCarbs))
+        NSLog("myLoop warning %d in %4.2f minutes", carbCorrectionNotification.gramsRemaining, timeToLowExpiredCarbs?.minutes ?? -1.0)
+        carbCorrectionNotification.type = .noCorrection
+        
+        // no correction needed
+        if ( carbCorrectionNotification.grams == 0 && carbCorrectionNotification.gramsRemaining < carbCorrectionThreshold) {
+            NotificationManager.clearCarbCorrectionNotification()
+            return( suggestedCarbCorrection )
+        }
+        
+        // badge correction only
+        if ( carbCorrectionNotification.grams < carbCorrectionThreshold && carbCorrectionNotification.gramsRemaining < carbCorrectionThreshold) {
+            carbCorrectionNotification.type = .correction
+            NotificationManager.clearCarbCorrectionNotification()
+            NotificationManager.sendCarbCorrectionNotificationBadge(carbCorrectionNotification.grams)
+            return( suggestedCarbCorrection )
+        }
+        
+        // carb correction notification, no warning
+        if ( carbCorrectionNotification.grams >= carbCorrectionThreshold && carbCorrectionNotification.gramsRemaining < carbCorrectionThreshold) {
+            carbCorrectionNotification.type = .correction
+            NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
+            return( suggestedCarbCorrection )
+        }
+        
+        // warning slow absorbing carbs
+        if ( carbCorrectionNotification.grams < carbCorrectionThreshold && carbCorrectionNotification.gramsRemaining >= carbCorrectionThreshold) {
+            carbCorrectionNotification.type = .warning
+            NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
+            return( suggestedCarbCorrection )
+        }
+
+        // correction notification and warning
+        if ( carbCorrectionNotification.grams >= carbCorrectionThreshold && carbCorrectionNotification.gramsRemaining >= carbCorrectionThreshold) {
+            carbCorrectionNotification.type = .correctionWarning
+            NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
+            return( suggestedCarbCorrection )
+        }
+        
+        /*
         do {
             var effects: PredictionInputEffect = [.carbs, .insulin, .momentum, .standardRetrospection, .zeroTemp]
             (carbCorrection, timeToLow) = try carbsRequired(effects: effects)
@@ -186,6 +223,7 @@ class CarbCorrection {
                 carbCorrectionNotification.grams = carbCorrectionGrams
                 carbCorrectionNotification.lowPredictedIn = timeToLow
                 carbCorrectionNotification.type = .correction
+                carbCorrectionNotification.gramsRemaining = 0
                 NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
 
             } else {
@@ -223,12 +261,14 @@ class CarbCorrection {
                     carbCorrectionNotification.grams = remainingCarbGrams
                     carbCorrectionNotification.lowPredictedIn = nil
                     carbCorrectionNotification.type = .warning
+                    carbCorrectionNotification.gramsRemaining = remainingCarbGrams
                     NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
 
                 }
             }
             
         }
+        */
 
         return( suggestedCarbCorrection )
     }
@@ -238,6 +278,11 @@ class CarbCorrection {
         
         var carbCorrection: Double = 0.0
         var timeToLow: TimeInterval?
+        
+        let carbRatioSchedule: CarbRatioSchedule? = UserDefaults.appGroup.carbRatioSchedule
+        let insulinModelSettings: InsulinModelSettings? = UserDefaults.appGroup.insulinModelSettings
+        let insulinSensitivitySchedule: InsulinSensitivitySchedule? = UserDefaults.appGroup.insulinSensitivitySchedule
+        let settings: LoopSettings = UserDefaults.appGroup.loopSettings ?? LoopSettings()
         
         // Get settings, otherwise throw error
         guard
@@ -282,6 +327,8 @@ class CarbCorrection {
 
     /// - Throws: LoopError.missingDataError
     fileprivate func predictGlucose(using inputs: PredictionInputEffect) throws -> [GlucoseValue] {
+        
+        let insulinModelSettings: InsulinModelSettings? = UserDefaults.appGroup.insulinModelSettings
         
         guard let model = insulinModelSettings?.model else {
             throw LoopError.configurationError(.insulinModel)
@@ -335,7 +382,7 @@ class CarbCorrection {
     }
     
     // get modeled carb absorption
-    fileprivate func modeledCarbAbsorption() throws -> Double? {
+    fileprivate func modeledCarbAbsorption() -> Double? {
         let effects: PredictionInputEffect = [.carbs]
 
         var modeledCarbOnlyGlucose: [GlucoseValue]?
@@ -345,7 +392,7 @@ class CarbCorrection {
             modeledCarbOnlyGlucose = try predictGlucose(using: effects)
         }
         catch {
-            throw LoopError.invalidData(details: "Unable to calculate glucose based on carb effects only")
+            return( modeledCarbEffect )
         }
         
         guard let predictionCount = modeledCarbOnlyGlucose?.count else {
@@ -367,7 +414,7 @@ class CarbCorrection {
     }
   
     // counteraction
-    fileprivate func latestInsulinCounteraction() -> Counteraction {
+    fileprivate func recentInsulinCounteraction() -> Counteraction {
         
         var counteraction: Counteraction
         
@@ -422,10 +469,12 @@ class CarbCorrection {
 struct CarbCorrectionNotificationOption: OptionSet {
     let rawValue: Int
     
-    static let correction = CarbCorrectionNotificationOption(rawValue: 1 << 0)
-    static let warning = CarbCorrectionNotificationOption(rawValue: 1 << 1)
+    static let noCorrection = CarbCorrectionNotificationOption(rawValue: 1 << 0)
+    static let correction = CarbCorrectionNotificationOption(rawValue: 1 << 1)
+    static let warning = CarbCorrectionNotificationOption(rawValue: 1 << 2)
+    static let correctionWarning = CarbCorrectionNotificationOption(rawValue: 1 << 3)
 }
 
-typealias CarbCorrectionNotification = (grams: Int, lowPredictedIn: TimeInterval?, type: CarbCorrectionNotificationOption)
+typealias CarbCorrectionNotification = (grams: Int, lowPredictedIn: TimeInterval?, gramsRemaining: Int, type: CarbCorrectionNotificationOption)
 
 typealias Counteraction = (currentCounteraction: Double?, averageCounteraction: Double?)
