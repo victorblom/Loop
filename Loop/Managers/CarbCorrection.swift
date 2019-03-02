@@ -51,6 +51,12 @@ class CarbCorrection {
     private var timeToLowExpiredCarbs: TimeInterval = TimeInterval.minutes(0.0)
     private var carbCorrectionNotification: CarbCorrectionNotification
     
+    private var counteraction: Counteraction?
+    private var modeledCarbEffectValue: Double?
+    private var currentAbsorbingFraction: Double = 0.0
+    private var averageAbsorbingFraction: Double = 0.0
+    private var slowAbsorbingCheck: String = "No"
+    
     /**
      Initialize
      
@@ -109,8 +115,8 @@ class CarbCorrection {
             throw LoopError.invalidData(details: "zeroTempEffect not available, updateCarbCorrection failed")
         }
         
-        let counteraction = recentInsulinCounteraction()
-        guard let currentCounteraction = counteraction.currentCounteraction, let averageCounteraction = counteraction.averageCounteraction else {
+        counteraction = recentInsulinCounteraction()
+        guard let currentCounteraction = counteraction?.currentCounteraction, let averageCounteraction = counteraction?.averageCounteraction else {
             carbCorrectionStatus = "Error: calculation of insulin counteraction failed."
             return( suggestedCarbCorrection )
         }
@@ -119,6 +125,7 @@ class CarbCorrection {
             carbCorrectionStatus = "Error: calculation of modeled carb absorption failed."
             return( suggestedCarbCorrection )
         }
+        modeledCarbEffectValue = modeledCarbEffect
         
         carbCorrection = 0.0
         carbCorrectionExpiredCarbs = 0.0
@@ -134,12 +141,14 @@ class CarbCorrection {
             throw LoopError.invalidData(details: "Could not compute carbs required, updateCarbCorrection failed")
         }
         
+        slowAbsorbingCheck = "No"
         if modeledCarbEffect > 0.0 {
-            let currentAbsorbingFraction = currentCounteraction / modeledCarbEffect
-            let averageAbsorbingFraction = averageCounteraction / modeledCarbEffect
+            currentAbsorbingFraction = currentCounteraction / modeledCarbEffect
+            averageAbsorbingFraction = averageCounteraction / modeledCarbEffect
             NSLog("myLoop: current absorbing fraction = %4.2f", currentAbsorbingFraction)
             NSLog("myLoop: average absorbing fraction = %4.2f", averageAbsorbingFraction)
             if (currentAbsorbingFraction < expireCarbsThreshold && averageAbsorbingFraction < 2 * expireCarbsThreshold) {
+                slowAbsorbingCheck = "Yes"
                 effects = [.unexpiredCarbs, .insulin, .momentum, .zeroTemp]
                 do {
                     (carbCorrectionExpiredCarbs, timeToLowExpiredCarbs) = try carbsRequired(effects)
@@ -421,7 +430,12 @@ extension CarbCorrection {
             "carbCorrectionSkipFraction: \(carbCorrectionSkipFraction)",
             "carbCorrectionAbsorptionTime [min]: \(carbCorrectionAbsorptionTime.minutes)",
             "suggestedCarbCorrection [g]: \(String(describing: suggestedCarbCorrection))",
-            "carbCorrectionNotification: \(String(describing: carbCorrectionNotification))"
+            "carbCorrectionNotification: \(String(describing: carbCorrectionNotification))",
+            "counteraction [mg/dL/5min]: \(String(describing: counteraction))",
+            "modeledCarbEffectValue [mg/dL/5min]: \(String(describing: modeledCarbEffectValue))",
+            "currentAbsorbingFraction: \(currentAbsorbingFraction)",
+            "averageAbsorbingFraction: \(currentAbsorbingFraction)",
+            "Check slow absorption: \(slowAbsorbingCheck)"
         ]
         report.append("")
         completion(report.joined(separator: "\n"))
