@@ -702,7 +702,7 @@ extension LoopDataManager {
             // effects due to future food entries, for carb-correction purposes
             updateGroup.enter()
             carbStore.getGlucoseEffectsFutureFood(
-                start: Date().addingTimeInterval(.minutes(-15.0)),
+                start: lastGlucoseDate.addingTimeInterval(.minutes(-20.0)),
                 effectVelocities: settings.dynamicCarbAbsorptionEnabled ? insulinCounteractionEffects : nil
             ) { (result) -> Void in
                 switch result {
@@ -766,13 +766,13 @@ extension LoopDataManager {
             carbCorrection.carbEffectFutureFood = carbEffectFutureFood
             carbCorrection.glucoseMomentumEffect = glucoseMomentumEffect
             carbCorrection.zeroTempEffect = zeroTempEffect
-            carbCorrection.standardRetrospectiveGlucoseEffect = standardRetrospectiveGlucoseEffect
-            carbCorrection.retrospectiveGlucoseEffect = retrospectiveGlucoseEffect
-            carbCorrection.retrospectiveGlucoseDiscrepancies = retrospectiveGlucoseDiscrepancies
-            carbCorrection.retrospectiveGlucoseDiscrepanciesSummed = retrospectiveGlucoseDiscrepanciesSummed
             carbCorrection.insulinCounteractionEffects = insulinCounteractionEffects
             if let latestGlucose = self.glucoseStore.latestGlucose {
-                try suggestedCarbCorrection = carbCorrection.updateCarbCorrection(latestGlucose)
+                do {
+                     try suggestedCarbCorrection = carbCorrection.updateCarbCorrection(latestGlucose)
+                } catch let error {
+                    logger.error(error)
+                }
             }
         }
         
@@ -1268,6 +1268,11 @@ extension LoopDataManager {
             ]
 
             self.integralRC.generateDiagnosticReport { (report) in
+                entries.append(report)
+                entries.append("")
+            }
+            
+            self.carbCorrection.generateDiagnosticReport { (report) in
                 entries.append(report)
                 entries.append("")
             }
