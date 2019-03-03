@@ -767,6 +767,7 @@ extension LoopDataManager {
             carbCorrection.glucoseMomentumEffect = glucoseMomentumEffect
             carbCorrection.zeroTempEffect = zeroTempEffect
             carbCorrection.insulinCounteractionEffects = insulinCounteractionEffects
+            carbCorrection.retrospectiveGlucoseEffect = retrospectiveGlucoseEffect
             if let latestGlucose = self.glucoseStore.latestGlucose {
                 do {
                      try suggestedCarbCorrection = carbCorrection.updateCarbCorrection(latestGlucose)

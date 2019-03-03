@@ -24,6 +24,7 @@ class CarbCorrection {
     public var carbEffectFutureFood: [GlucoseEffect]?
     public var glucoseMomentumEffect: [GlucoseEffect]?
     public var zeroTempEffect: [GlucoseEffect]?
+    public var retrospectiveGlucoseEffect: [GlucoseEffect]?
     public var insulinCounteractionEffects: [GlucoseEffectVelocity]?
     
     var suggestedCarbCorrection: Int?
@@ -35,7 +36,7 @@ class CarbCorrection {
      */
     private let carbCorrectionThreshold: Int = 2 // do not bother with carb correction notifications below this value, only display badge
     private let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
-    private let expireCarbsThreshold: Double = 0.25 // absorption rate below this fraction of modeled carb absorption triggers expiration of past carbs
+    private let expireCarbsThreshold: Double = 0.5 // absorption rate below this fraction of modeled carb absorption triggers expiration of past carbs
     private let carbCorrectionSkipFraction: Double = 0.33 // suggested carb correction calculated to bring bg above suspendThreshold after carbCorrectionSkipFraction of carbCorrectionAbsorptionTime
     
     /// All math is performed with glucose expressed in mg/dL
@@ -47,15 +48,17 @@ class CarbCorrection {
     private var carbCorrectionStatus: String = "-"
     private var carbCorrection: Double = 0.0
     private var carbCorrectionExpiredCarbs: Double = 0.0
+    private var carbCorrectionExcessInsulin: Double = 0.0
     private var timeToLow: TimeInterval = TimeInterval.minutes(0.0)
     private var timeToLowExpiredCarbs: TimeInterval = TimeInterval.minutes(0.0)
+    private var timeToLowExcessInsulin: TimeInterval = TimeInterval.minutes(0.0)
     private var carbCorrectionNotification: CarbCorrectionNotification
-    
     private var counteraction: Counteraction?
     private var modeledCarbEffectValue: Double?
     private var currentAbsorbingFraction: Double = 0.0
     private var averageAbsorbingFraction: Double = 0.0
     private var slowAbsorbingCheck: String = "No"
+    private var excessInsulinAction: String = "No"
     
     /**
      Initialize
@@ -142,12 +145,13 @@ class CarbCorrection {
         }
         
         slowAbsorbingCheck = "No"
+        excessInsulinAction = "No"
         if modeledCarbEffect > 0.0 {
             currentAbsorbingFraction = currentCounteraction / modeledCarbEffect
             averageAbsorbingFraction = averageCounteraction / modeledCarbEffect
             NSLog("myLoop: current absorbing fraction = %4.2f", currentAbsorbingFraction)
             NSLog("myLoop: average absorbing fraction = %4.2f", averageAbsorbingFraction)
-            if (currentAbsorbingFraction < expireCarbsThreshold && averageAbsorbingFraction < 2 * expireCarbsThreshold) {
+            if (currentAbsorbingFraction < 0.5 * expireCarbsThreshold && averageAbsorbingFraction < expireCarbsThreshold) {
                 slowAbsorbingCheck = "Yes"
                 effects = [.unexpiredCarbs, .insulin, .momentum, .zeroTemp]
                 do {
@@ -157,6 +161,20 @@ class CarbCorrection {
                     throw LoopError.invalidData(details: "Could not compute carbs required when past carbs expired, updateCarbCorrection failed")
                 }
                 NSLog("myLoop expired carb warning: %4.2f g in %4.2f minutes", carbCorrectionExpiredCarbs, timeToLowExpiredCarbs.minutes)
+            }
+        } else {
+            if (currentCounteraction < 0.0  && averageCounteraction < 0.0 && carbCorrection == 0) {
+                excessInsulinAction = "Yes"
+                effects = [.carbs, .insulin, .momentum, .retrospection, .zeroTemp]
+                do {
+                    (carbCorrectionExcessInsulin, timeToLowExcessInsulin) = try carbsRequired(effects)
+                } catch {
+                    carbCorrectionStatus = "Error: glucose prediction failed with effects: \(effects)."
+                    throw LoopError.invalidData(details: "Could not compute carbs required when excess insulin detected, updateCarbCorrection failed")
+                }
+                NSLog("myLoop Excess insulin action detected, correction: %4.2f g in %4.2f minutes", carbCorrectionExcessInsulin, timeToLowExcessInsulin.minutes)
+                carbCorrection = carbCorrectionExcessInsulin
+                timeToLow = timeToLowExcessInsulin
             }
         }
         
@@ -287,6 +305,10 @@ class CarbCorrection {
         
         if inputs.contains(.insulin), let insulinEffect = self.insulinEffect {
             effects.append(insulinEffect)
+        }
+        
+        if inputs.contains(.retrospection), let retrospectionEffect = self.retrospectiveGlucoseEffect {
+            effects.append(retrospectionEffect)
         }
         
         if inputs.contains(.momentum), let momentumEffect = self.glucoseMomentumEffect {
@@ -424,18 +446,20 @@ extension CarbCorrection {
             "Status: \(carbCorrectionStatus)",
             "Current glucose [mg/dL]: \(String(describing: glucose?.quantity.doubleValue(for: unit)))",
             "Current glucose date: \(String(describing: glucose?.startDate))",
-            "carbCorrectionThreshold: \(carbCorrectionThreshold)",
-            "carbCorrectionFactor: \(carbCorrectionFactor)",
-            "expireCarbsThreshold: \(expireCarbsThreshold)",
-            "carbCorrectionSkipFraction: \(carbCorrectionSkipFraction)",
-            "carbCorrectionAbsorptionTime [min]: \(carbCorrectionAbsorptionTime.minutes)",
             "suggestedCarbCorrection [g]: \(String(describing: suggestedCarbCorrection))",
-            "carbCorrectionNotification: \(String(describing: carbCorrectionNotification))",
+            "Suggested carb correction [g]: \(String(describing: carbCorrectionNotification.grams))",
+            "Low predicted in [min]: \(String(describing: carbCorrectionNotification.lowPredictedIn.minutes))",
+            "Slow absorbing carbs remaining [g]: \(String(describing: carbCorrectionNotification.gramsRemaining))",
             "counteraction [mg/dL/5min]: \(String(describing: counteraction))",
             "modeledCarbEffectValue [mg/dL/5min]: \(String(describing: modeledCarbEffectValue))",
             "currentAbsorbingFraction: \(currentAbsorbingFraction)",
-            "averageAbsorbingFraction: \(currentAbsorbingFraction)",
-            "Check slow absorption: \(slowAbsorbingCheck)"
+            "averageAbsorbingFraction: \(averageAbsorbingFraction)",
+            "Check slow carb absorption: \(slowAbsorbingCheck)",
+            "Check excess insulin action: \(excessInsulinAction)",
+            "carbCorrectionThreshold [g]: \(carbCorrectionThreshold)",
+            "expireCarbsThreshold fraction: \(expireCarbsThreshold)",
+            "carbCorrectionSkipFraction: \(carbCorrectionSkipFraction)",
+            "carbCorrectionAbsorptionTime [min]: \(carbCorrectionAbsorptionTime.minutes)"
         ]
         report.append("")
         completion(report.joined(separator: "\n"))
