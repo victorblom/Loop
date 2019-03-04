@@ -10,8 +10,6 @@ import Foundation
 import HealthKit
 import LoopKit
 
-// dm61 TO DO: clean-up getting necessary effects from LoopDataManager
-// dm61 TO DO: remove force unwraps
 
 /**
  Carb Correction description comments
@@ -36,7 +34,7 @@ class CarbCorrection {
      */
     private let carbCorrectionThreshold: Int = 2 // do not bother with carb correction notifications below this value, only display badge
     private let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
-    private let expireCarbsThreshold: Double = 0.5 // absorption rate below this fraction of modeled carb absorption triggers expiration of past carbs
+    private let expireCarbsThreshold: Double = 0.5 // absorption rate below this fraction of modeled carb absorption triggers warning about slow carb absorption
     private let carbCorrectionSkipFraction: Double = 0.33 // suggested carb correction calculated to bring bg above suspendThreshold after carbCorrectionSkipFraction of carbCorrectionAbsorptionTime
     
     /// All math is performed with glucose expressed in mg/dL
@@ -355,7 +353,16 @@ class CarbCorrection {
             return( modeledCarbEffect )
         }
         
-        guard predictionCount >= 3 else {
+        // TO DO: clean this 
+        guard predictionCount >= 2 else {
+            return( modeledCarbEffect )
+        }
+        
+        if predictionCount == 2 {
+            guard let glucose1 = modeledCarbOnlyGlucose?[0].quantity.doubleValue(for: unit), let glucose2 = modeledCarbOnlyGlucose?[1].quantity.doubleValue(for: unit) else {
+                return( modeledCarbEffect )
+            }
+            modeledCarbEffect = glucose2 - glucose1
             return( modeledCarbEffect )
         }
         

@@ -271,12 +271,12 @@ struct NotificationManager {
                 notification.body = String(format: NSLocalizedString("%1$@ g Recommended to Treat Low Predicted in %2$@", comment: "Carb correction and time to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)"), gramsString, lowPredictedInString)
             }
         case .warning:
-            notification.body = String(format: NSLocalizedString("Warning: Slow Absorbing (%1$@ g Remaining)", comment: "Slow carb absorption warning format string. (1: Correction needed if remaining carbs expire)"), gramsRemainingString)
+            notification.body = String(format: NSLocalizedString("Warning: Slow Absorbing Carbs (%1$@ g Remaining)", comment: "Slow carb absorption warning format string. (1: Correction needed if remaining carbs expire)"), gramsRemainingString)
         case .correctionWarning:
             if lowPredictedIn < imminentLowTimeInterval {
-                notification.body = String(format: NSLocalizedString("%1$@ g Recommended, Warning: Slow Absorbing (%2$@ g Remaining)", comment: "Carb correction for imminent low alert format string. (1: Recommended correction grams)(2: Correction needed if remaining carbs expire)"), gramsString, gramsRemainingString)
+                notification.body = String(format: NSLocalizedString("%1$@ g Recommended, Warning: Slow Absorbing Carbs (%2$@ g Remaining)", comment: "Carb correction for imminent low alert format string. (1: Recommended correction grams)(2: Correction needed if remaining carbs expire)"), gramsString, gramsRemainingString)
             } else {
-                notification.body = String(format: NSLocalizedString("%1$@ g Recommended to Treat Low Predicted in %2$@. Warning: Slow Absorbing (%3$@ g Remaining)", comment: "Carb correction with time to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)(3: Correction needed if remaining carbs expire)"), gramsString, lowPredictedInString, gramsRemainingString)
+                notification.body = String(format: NSLocalizedString("%1$@ g Recommended to Treat Low Predicted in %2$@. Warning: Slow Absorbing Carbs (%3$@ g Remaining)", comment: "Carb correction with time to predicted low alert format string. (1: Recommended correction grams)(2: Time to predicted low)(3: Correction needed if remaining carbs expire)"), gramsString, lowPredictedInString, gramsRemainingString)
             }
         default:
             notification.body = String(format: NSLocalizedString("--", comment: "Error format string"))
