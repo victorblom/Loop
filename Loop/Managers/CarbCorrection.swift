@@ -373,6 +373,13 @@ class CarbCorrection {
         modeledCarbEffect = glucose2 - glucose1
         NSLog("myLoop: modeled carb effect %4.2f", modeledCarbEffect!)
         
+        /* wip compute average modeled carb effect from prior carb entries
+        guard let initialGlucose = modeledCarbOnlyGlucose?[0].quantity.doubleValue(for: unit) else {
+            return( modeledCarbEffect )
+        }
+        */
+        
+        
         return( modeledCarbEffect )
     }
   
