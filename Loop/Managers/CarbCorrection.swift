@@ -161,7 +161,9 @@ class CarbCorrection {
                 NSLog("myLoop expired carb warning: %4.2f g in %4.2f minutes", carbCorrectionExpiredCarbs, timeToLowExpiredCarbs.minutes)
             }
         } else {
-            if (currentCounteraction < 0.0  && averageCounteraction < 0.0 && carbCorrection == 0) {
+            currentAbsorbingFraction = 0.0
+            averageAbsorbingFraction = 0.0
+            if (averageCounteraction < 0.0  && currentCounteraction < averageCounteraction  && carbCorrection == 0) {
                 excessInsulinAction = "Yes"
                 effects = [.carbs, .insulin, .momentum, .retrospection, .zeroTemp]
                 do {
@@ -331,56 +333,37 @@ class CarbCorrection {
     // get modeled carb absorption
     fileprivate func modeledCarbAbsorption() -> Double? {
         let effects: PredictionInputEffect = [.carbs]
-        var modeledCarbOnlyGlucose: [GlucoseValue]?
+        var predictedGlucose: [GlucoseValue]?
         var modeledCarbEffect: Double?
         
-        //TO DO: rework in terms of GlucoseEffectVelocity
-        // let glucoseUnit = HKUnit.milligramsPerDeciliter
-        // let velocityUnit = GlucoseEffectVelocity.perSecondUnit
-        //let effectValue = effect.quantity.doubleValue(for: GlucoseEffectVelocity.perSecondUnit) // mg/dL/s
-        // let unit = HKUnit.milligramsPerDeciliter.unitDivided(by: .minute())
-        //  let quantity = HKQuantity(unit: unit, doubleValue: $0["velocity"] as! Double)
-        // return GlucoseEffectVelocity( startDate: dateFormatter.date(from: $0["start_at"] as! String)!, endDate: dateFormatter.date(from: $0["end_at"] as! String)!, quantity: quantity)
-        
         do {
-            modeledCarbOnlyGlucose = try predictGlucose(using: effects)
+            predictedGlucose = try predictGlucose(using: effects)
         }
         catch {
             return( modeledCarbEffect )
         }
         
-        guard let predictionCount = modeledCarbOnlyGlucose?.count else {
+        guard let modeledCarbOnlyGlucose = predictedGlucose else {
             return( modeledCarbEffect )
         }
         
-        // TO DO: clean this 
-        guard predictionCount >= 2 else {
+        if modeledCarbOnlyGlucose.count < 2 {
             return( modeledCarbEffect )
         }
         
-        if predictionCount == 2 {
-            guard let glucose1 = modeledCarbOnlyGlucose?[0].quantity.doubleValue(for: unit), let glucose2 = modeledCarbOnlyGlucose?[1].quantity.doubleValue(for: unit) else {
-                return( modeledCarbEffect )
-            }
+        if modeledCarbOnlyGlucose.count == 2 {
+            let glucose1 = modeledCarbOnlyGlucose[0].quantity.doubleValue(for: unit)
+            let glucose2 = modeledCarbOnlyGlucose[1].quantity.doubleValue(for: unit)
             modeledCarbEffect = glucose2 - glucose1
-            return( modeledCarbEffect )
+        } else {
+            let glucose1 = modeledCarbOnlyGlucose[1].quantity.doubleValue(for: unit)
+            let glucose2 = modeledCarbOnlyGlucose[2].quantity.doubleValue(for: unit)
+            modeledCarbEffect = glucose2 - glucose1
         }
         
-        guard let glucose1 = modeledCarbOnlyGlucose?[1].quantity.doubleValue(for: unit), let glucose2 = modeledCarbOnlyGlucose?[2].quantity.doubleValue(for: unit) else {
-            return( modeledCarbEffect )
-        }
-        
-        modeledCarbEffect = glucose2 - glucose1
         NSLog("myLoop: modeled carb effect %4.2f", modeledCarbEffect!)
-        
-        /* wip compute average modeled carb effect from prior carb entries
-        guard let initialGlucose = modeledCarbOnlyGlucose?[0].quantity.doubleValue(for: unit) else {
-            return( modeledCarbEffect )
-        }
-        */
-        
-        
         return( modeledCarbEffect )
+        
     }
   
     // counteraction
