@@ -700,9 +700,11 @@ extension LoopDataManager {
             }
             
             // effects due to future food entries, for carb-correction purposes
+            let sampleStart = lastGlucoseDate.addingTimeInterval(.minutes(-20.0))
             updateGroup.enter()
-            carbStore.getGlucoseEffectsFutureFood(
-                start: lastGlucoseDate.addingTimeInterval(.minutes(-20.0)),
+            carbStore.getGlucoseEffects(
+                start: sampleStart,
+                sampleStart: sampleStart,
                 effectVelocities: settings.dynamicCarbAbsorptionEnabled ? insulinCounteractionEffects : nil
             ) { (result) -> Void in
                 switch result {
@@ -1028,6 +1030,7 @@ extension LoopDataManager {
             maxBolus: maxBolus
         )
         recommendedBolus = (recommendation: recommendation, date: startDate)
+        
     }
 
     /// *This method should only be called from the `dataAccessQueue`*

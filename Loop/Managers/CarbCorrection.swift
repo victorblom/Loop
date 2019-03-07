@@ -16,7 +16,7 @@ import LoopKit
  */
 class CarbCorrection {
     
-    /// Car correction variables: effects
+    /// Carb correction variables: effects
     public var insulinEffect: [GlucoseEffect]?
     public var carbEffect: [GlucoseEffect]?
     public var carbEffectFutureFood: [GlucoseEffect]?
@@ -32,9 +32,9 @@ class CarbCorrection {
      Carb correction math parameters:
      -
      */
-    private let carbCorrectionThreshold: Int = 2 // do not bother with carb correction notifications below this value, only display badge
+    private let carbCorrectionThreshold: Int = 3 // do not bother with carb correction notifications below this value, only display badge
     private let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
-    private let expireCarbsThreshold: Double = 0.5 // absorption rate below this fraction of modeled carb absorption triggers warning about slow carb absorption
+    private let expireCarbsThreshold: Double = 0.6 // absorption rate below this fraction of modeled carb absorption triggers warning about slow carb absorption
     private let carbCorrectionSkipFraction: Double = 0.33 // suggested carb correction calculated to bring bg above suspendThreshold after carbCorrectionSkipFraction of carbCorrectionAbsorptionTime
     
     /// All math is performed with glucose expressed in mg/dL
@@ -79,7 +79,7 @@ class CarbCorrection {
      Calculates carb correction
      
      - Parameters:
-     - fix glucose: Most recent glucose
+     - glucose: Most recent glucose
      
      - Returns:
      - suggested carb correction, if needed
@@ -443,12 +443,12 @@ extension CarbCorrection {
             "Status: \(carbCorrectionStatus)",
             "Current glucose [mg/dL]: \(String(describing: glucose?.quantity.doubleValue(for: unit)))",
             "Current glucose date: \(String(describing: glucose?.startDate))",
-            "suggestedCarbCorrection [g]: \(String(describing: suggestedCarbCorrection))",
             "Suggested carb correction [g]: \(String(describing: carbCorrectionNotification.grams))",
             "Low predicted in [min]: \(String(describing: carbCorrectionNotification.lowPredictedIn.minutes))",
             "Slow absorbing carbs remaining [g]: \(String(describing: carbCorrectionNotification.gramsRemaining))",
-            "counteraction [mg/dL/5min]: \(String(describing: counteraction))",
-            "modeledCarbEffectValue [mg/dL/5min]: \(String(describing: modeledCarbEffectValue))",
+            "Carb correction type: \(String(describing: carbCorrectionNotification.type))",
+            "Recent insulin counteraction [mg/dL/5min]: \(String(describing: counteraction))",
+            "Modeled carb effect [mg/dL/5min]: \(String(describing: modeledCarbEffectValue))",
             "currentAbsorbingFraction: \(currentAbsorbingFraction)",
             "averageAbsorbingFraction: \(averageAbsorbingFraction)",
             "Check slow carb absorption: \(slowAbsorbingCheck)",
