@@ -34,7 +34,7 @@ class CarbCorrection {
      */
     private let carbCorrectionThreshold: Int = 3 // do not bother with carb correction notifications below this value, only display badge
     private let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
-    private let expireCarbsThreshold: Double = 0.6 // absorption rate below this fraction of modeled carb absorption triggers warning about slow carb absorption
+    private let expireCarbsThreshold: Double = 0.5 // absorption rate below this fraction of modeled carb absorption triggers warning about slow carb absorption
     private let carbCorrectionSkipFraction: Double = 0.33 // suggested carb correction calculated to bring bg above suspendThreshold after carbCorrectionSkipFraction of carbCorrectionAbsorptionTime
     
     /// All math is performed with glucose expressed in mg/dL
@@ -57,6 +57,7 @@ class CarbCorrection {
     private var averageAbsorbingFraction: Double = 0.0
     private var slowAbsorbingCheck: String = "No"
     private var excessInsulinAction: String = "No"
+    private var usingRetrospection: String = "No"
     
     /**
      Initialize
@@ -133,7 +134,24 @@ class CarbCorrection {
         timeToLow = TimeInterval.minutes(0.0)
         timeToLowExpiredCarbs = TimeInterval.minutes(0.0)
         
-        var effects: PredictionInputEffect = [.carbs, .insulin, .momentum, .zeroTemp]
+        var useRetrospection: Bool = false
+        usingRetrospection = "No"
+        if let retroLast = retrospectiveGlucoseEffect?.last?.quantity.doubleValue(for: unit), let retroFirst = retrospectiveGlucoseEffect?.first?.quantity.doubleValue(for: unit) {
+            if retroLast > retroFirst {
+                useRetrospection = true
+                usingRetrospection = "Yes"
+            }
+        } else {
+            carbCorrectionStatus = "Error: retrospective glucose effects not available"
+            throw LoopError.invalidData(details: "Could not compute carbs required, updateCarbCorrection failed")
+        }
+        
+        var effects: PredictionInputEffect
+        if useRetrospection {
+            effects = [.carbs, .insulin, .momentum, .zeroTemp, .retrospection]
+        } else {
+            effects = [.carbs, .insulin, .momentum, .zeroTemp]
+        }
         do {
             (carbCorrection, timeToLow) = try carbsRequired(effects)
             NSLog("myLoop correction: %4.2f g in %4.2f minutes", carbCorrection, timeToLow.minutes)
@@ -149,9 +167,13 @@ class CarbCorrection {
             averageAbsorbingFraction = averageCounteraction / modeledCarbEffect
             NSLog("myLoop: current absorbing fraction = %4.2f", currentAbsorbingFraction)
             NSLog("myLoop: average absorbing fraction = %4.2f", averageAbsorbingFraction)
-            if (currentAbsorbingFraction < 0.5 * expireCarbsThreshold && averageAbsorbingFraction < expireCarbsThreshold) {
+            if ((2 * currentAbsorbingFraction - averageAbsorbingFraction) < expireCarbsThreshold && averageAbsorbingFraction < 2.0 * expireCarbsThreshold) {
                 slowAbsorbingCheck = "Yes"
-                effects = [.unexpiredCarbs, .insulin, .momentum, .zeroTemp]
+                if useRetrospection {
+                    effects = [.unexpiredCarbs, .insulin, .momentum, .zeroTemp, .retrospection]
+                } else {
+                    effects = [.unexpiredCarbs, .insulin, .momentum, .zeroTemp]
+                }
                 do {
                     (carbCorrectionExpiredCarbs, timeToLowExpiredCarbs) = try carbsRequired(effects)
                 } catch {
@@ -165,6 +187,7 @@ class CarbCorrection {
             averageAbsorbingFraction = 0.0
             if (averageCounteraction < 0.0  && currentCounteraction < averageCounteraction  && carbCorrection == 0) {
                 excessInsulinAction = "Yes"
+                usingRetrospection = "Yes"
                 effects = [.carbs, .insulin, .momentum, .retrospection, .zeroTemp]
                 do {
                     (carbCorrectionExcessInsulin, timeToLowExcessInsulin) = try carbsRequired(effects)
@@ -234,9 +257,6 @@ class CarbCorrection {
         
         var carbCorrection: Double = 0.0
         var timeToLow: TimeInterval = TimeInterval.minutes(0.0)
-        //TO DO: use HK for carbs
-        // let newCarbs = CarbValue(startDate: Date(), quantity: HKQuantity(unit: HKUnit.gram(), doubleValue: carbCorrection))
-        
         let carbRatioSchedule: CarbRatioSchedule? = UserDefaults.appGroup.carbRatioSchedule
         let insulinSensitivitySchedule: InsulinSensitivitySchedule? = UserDefaults.appGroup.insulinSensitivitySchedule
         let insulinModelSettings: InsulinModelSettings? = UserDefaults.appGroup.insulinModelSettings
@@ -321,7 +341,6 @@ class CarbCorrection {
         
         var prediction = LoopMath.predictGlucose(startingAt: glucose, momentum: momentum, effects: effects)
         
-        // If prediction is shorter than insulin model duration, extend it here.
         let finalDate = glucose.startDate.addingTimeInterval(model.effectDuration)
         if let last = prediction.last, last.startDate < finalDate {
             prediction.append(PredictedGlucoseValue(startDate: finalDate, quantity: last.quantity))
@@ -453,6 +472,7 @@ extension CarbCorrection {
             "averageAbsorbingFraction: \(averageAbsorbingFraction)",
             "Check slow carb absorption: \(slowAbsorbingCheck)",
             "Check excess insulin action: \(excessInsulinAction)",
+            "Using retrospection: \(usingRetrospection)",
             "carbCorrectionThreshold [g]: \(carbCorrectionThreshold)",
             "expireCarbsThreshold fraction: \(expireCarbsThreshold)",
             "carbCorrectionSkipFraction: \(carbCorrectionSkipFraction)",
