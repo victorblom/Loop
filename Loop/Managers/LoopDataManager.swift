@@ -160,6 +160,8 @@ final class LoopDataManager {
         }
     }
     private var carbEffectFutureFood: [GlucoseEffect]?
+    private var carbEffectFutureFoodTest: [GlucoseEffect]?
+    
     private var insulinEffect: [GlucoseEffect]? {
         didSet {
             predictedGlucose = nil
@@ -717,6 +719,24 @@ extension LoopDataManager {
                 
                 updateGroup.leave()
             }
+            
+            // TEST effects due to future food entries, for carb-correction purposes
+            updateGroup.enter()
+            carbStore.getGlucoseEffects(
+                start: sampleStart,
+                sampleStart: sampleStart,
+                effectVelocities: []
+            ) { (result) -> Void in
+                switch result {
+                case .failure(let error):
+                    self.logger.error(error)
+                    self.carbEffectFutureFoodTest = nil
+                case .success(let effects):
+                    self.carbEffectFutureFoodTest = effects
+                }
+                
+                updateGroup.leave()
+            }
 
         }
 
@@ -766,6 +786,7 @@ extension LoopDataManager {
             carbCorrection.insulinEffect = insulinEffect
             carbCorrection.carbEffect = carbEffect
             carbCorrection.carbEffectFutureFood = carbEffectFutureFood
+            carbCorrection.carbEffectFutureFoodTest = carbEffectFutureFoodTest
             carbCorrection.glucoseMomentumEffect = glucoseMomentumEffect
             carbCorrection.zeroTempEffect = zeroTempEffect
             carbCorrection.insulinCounteractionEffects = insulinCounteractionEffects

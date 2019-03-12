@@ -24,6 +24,7 @@ class CarbCorrection {
     public var zeroTempEffect: [GlucoseEffect]?
     public var retrospectiveGlucoseEffect: [GlucoseEffect]?
     public var insulinCounteractionEffects: [GlucoseEffectVelocity]?
+    public var carbEffectFutureFoodTest: [GlucoseEffect]?
     
     var suggestedCarbCorrection: Int?
     var glucose: GlucoseValue?
@@ -34,7 +35,7 @@ class CarbCorrection {
      */
     private let carbCorrectionThreshold: Int = 3 // do not bother with carb correction notifications below this value, only display badge
     private let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
-    private let expireCarbsThreshold: Double = 0.5 // absorption rate below this fraction of modeled carb absorption triggers warning about slow carb absorption
+    private let expireCarbsThreshold: Double = 0.4 // absorption rate below this fraction of modeled carb absorption triggers warning about slow carb absorption
     private let carbCorrectionSkipFraction: Double = 0.33 // suggested carb correction calculated to bring bg above suspendThreshold after carbCorrectionSkipFraction of carbCorrectionAbsorptionTime
     
     /// All math is performed with glucose expressed in mg/dL
@@ -58,6 +59,8 @@ class CarbCorrection {
     private var slowAbsorbingCheck: String = "No"
     private var excessInsulinAction: String = "No"
     private var usingRetrospection: String = "No"
+    private var predictedGlucoseUnexpiredCarbs: [GlucoseValue] = []
+    private var predictedGlucoseUnexpiredCarbsTest: [GlucoseValue] = []
     
     /**
      Initialize
@@ -211,6 +214,12 @@ class CarbCorrection {
         
         carbCorrectionStatus = "Successfully completed."
         
+        // for diagnostic only
+        effects = [.unexpiredCarbs]
+        predictedGlucoseUnexpiredCarbs = try predictGlucose(using: effects)
+        effects = [.unexpiredCarbsTest]
+        predictedGlucoseUnexpiredCarbsTest = try predictGlucose(using: effects)
+        
         // no correction needed
         if ( carbCorrectionNotification.grams == 0 && carbCorrectionNotification.gramsRemaining < carbCorrectionThreshold) {
             NotificationManager.clearCarbCorrectionNotification()
@@ -321,6 +330,10 @@ class CarbCorrection {
         
         if inputs.contains(.unexpiredCarbs), let futureCarbEffect = self.carbEffectFutureFood {
             effects.append(futureCarbEffect)
+        }
+        
+        if inputs.contains(.unexpiredCarbsTest), let futureCarbEffectTest = self.carbEffectFutureFoodTest {
+            effects.append(futureCarbEffectTest)
         }
         
         if inputs.contains(.insulin), let insulinEffect = self.insulinEffect {
@@ -476,7 +489,11 @@ extension CarbCorrection {
             "carbCorrectionThreshold [g]: \(carbCorrectionThreshold)",
             "expireCarbsThreshold fraction: \(expireCarbsThreshold)",
             "carbCorrectionSkipFraction: \(carbCorrectionSkipFraction)",
-            "carbCorrectionAbsorptionTime [min]: \(carbCorrectionAbsorptionTime.minutes)"
+            "carbCorrectionAbsorptionTime [min]: \(carbCorrectionAbsorptionTime.minutes)",
+            "----------------------------",
+            "Predicted glucose from unexpired carbs: \(String(describing: predictedGlucoseUnexpiredCarbs))",
+            "----------------------------",
+            "TEST unexpired carbs TEST: \(String(describing: predictedGlucoseUnexpiredCarbsTest))"
         ]
         report.append("")
         completion(report.joined(separator: "\n"))
