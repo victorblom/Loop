@@ -24,7 +24,6 @@ class CarbCorrection {
     public var zeroTempEffect: [GlucoseEffect]?
     public var retrospectiveGlucoseEffect: [GlucoseEffect]?
     public var insulinCounteractionEffects: [GlucoseEffectVelocity]?
-    public var carbEffectFutureFoodTest: [GlucoseEffect]?
     
     var suggestedCarbCorrection: Int?
     var glucose: GlucoseValue?
@@ -43,7 +42,7 @@ class CarbCorrection {
     
     private let carbCorrectionAbsorptionTime: TimeInterval
     
-    /// State variables reported in diagnostic issue report
+    /// Variables for diagnostic report
     private var carbCorrectionStatus: String = "-"
     private var carbCorrection: Double = 0.0
     private var carbCorrectionExpiredCarbs: Double = 0.0
@@ -60,7 +59,6 @@ class CarbCorrection {
     private var excessInsulinAction: String = "No"
     private var usingRetrospection: String = "No"
     private var predictedGlucoseUnexpiredCarbs: [GlucoseValue] = []
-    private var predictedGlucoseUnexpiredCarbsTest: [GlucoseValue] = []
     
     /**
      Initialize
@@ -217,8 +215,6 @@ class CarbCorrection {
         // for diagnostic only
         effects = [.unexpiredCarbs]
         predictedGlucoseUnexpiredCarbs = try predictGlucose(using: effects)
-        effects = [.unexpiredCarbsTest]
-        predictedGlucoseUnexpiredCarbsTest = try predictGlucose(using: effects)
         
         // no correction needed
         if ( carbCorrectionNotification.grams == 0 && carbCorrectionNotification.gramsRemaining < carbCorrectionThreshold) {
@@ -330,10 +326,6 @@ class CarbCorrection {
         
         if inputs.contains(.unexpiredCarbs), let futureCarbEffect = self.carbEffectFutureFood {
             effects.append(futureCarbEffect)
-        }
-        
-        if inputs.contains(.unexpiredCarbsTest), let futureCarbEffectTest = self.carbEffectFutureFoodTest {
-            effects.append(futureCarbEffectTest)
         }
         
         if inputs.contains(.insulin), let insulinEffect = self.insulinEffect {
@@ -491,9 +483,7 @@ extension CarbCorrection {
             "carbCorrectionSkipFraction: \(carbCorrectionSkipFraction)",
             "carbCorrectionAbsorptionTime [min]: \(carbCorrectionAbsorptionTime.minutes)",
             "----------------------------",
-            "Predicted glucose from unexpired carbs: \(String(describing: predictedGlucoseUnexpiredCarbs))",
-            "----------------------------",
-            "TEST unexpired carbs TEST: \(String(describing: predictedGlucoseUnexpiredCarbsTest))"
+            "Predicted glucose from unexpired carbs: \(String(describing: predictedGlucoseUnexpiredCarbs))"
         ]
         report.append("")
         completion(report.joined(separator: "\n"))
