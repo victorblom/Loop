@@ -36,6 +36,7 @@ class CarbCorrection {
     private let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
     private let expireCarbsThreshold: Double = 0.7 // absorption rate below this fraction of modeled carb absorption triggers warning about slow carb absorption
     private let carbCorrectionSkipFraction: Double = 0.4 // suggested carb correction calculated to bring bg above suspendThreshold after carbCorrectionSkipFraction of carbCorrectionAbsorptionTime
+    private let snoozeTime: TimeInterval = .minutes(19)
     
     /// All math is performed with glucose expressed in mg/dL
     private let unit = HKUnit.milligramsPerDeciliter
@@ -59,6 +60,8 @@ class CarbCorrection {
     private var excessInsulinAction: String = "No"
     private var usingRetrospection: String = "No"
     private var predictedGlucoseUnexpiredCarbs: [GlucoseValue] = []
+    private var lastNotificationDate: Date
+    private var timeSinceLastNotification: TimeInterval = TimeInterval.minutes(0.0)
     
     /**
      Initialize
@@ -75,6 +78,7 @@ class CarbCorrection {
         self.carbCorrectionNotification.lowPredictedIn = .minutes(0.0)
         self.carbCorrectionNotification.gramsRemaining = 0
         self.carbCorrectionNotification.type = .noCorrection
+        self.lastNotificationDate = Date().addingTimeInterval(-snoozeTime)
     }
     
     /**
@@ -216,6 +220,8 @@ class CarbCorrection {
         effects = [.unexpiredCarbs]
         predictedGlucoseUnexpiredCarbs = try predictGlucose(using: effects)
         
+        timeSinceLastNotification = -lastNotificationDate.timeIntervalSinceNow
+        
         // no correction needed
         if ( carbCorrectionNotification.grams == 0 && carbCorrectionNotification.gramsRemaining < carbCorrectionThreshold) {
             NotificationManager.clearCarbCorrectionNotification()
@@ -235,21 +241,34 @@ class CarbCorrection {
         // carb correction notification, no warning
         if ( carbCorrectionNotification.grams >= carbCorrectionThreshold && carbCorrectionNotification.gramsRemaining < carbCorrectionThreshold) {
             carbCorrectionNotification.type = .correction
-            NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
+            if timeSinceLastNotification > snoozeTime {
+                NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
+                    lastNotificationDate = Date()
+            } else {
+                NotificationManager.sendCarbCorrectionNotificationBadge(carbCorrectionNotification.grams)
+            }
             return( suggestedCarbCorrection )
         }
         
         // warning slow absorbing carbs
         if ( carbCorrectionNotification.grams < carbCorrectionThreshold && carbCorrectionNotification.gramsRemaining >= carbCorrectionThreshold) {
             carbCorrectionNotification.type = .warning
-            NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
+            if timeSinceLastNotification > snoozeTime {
+                NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
+                lastNotificationDate = Date()
+            }
             return( suggestedCarbCorrection )
         }
 
         // correction notification and warning
         if ( carbCorrectionNotification.grams >= carbCorrectionThreshold && carbCorrectionNotification.gramsRemaining >= carbCorrectionThreshold) {
             carbCorrectionNotification.type = .correctionWarning
-            NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
+            if timeSinceLastNotification > snoozeTime {
+                NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
+                lastNotificationDate = Date()
+            } else {
+                NotificationManager.sendCarbCorrectionNotificationBadge(carbCorrectionNotification.grams)
+            }
             return( suggestedCarbCorrection )
         }
         
@@ -467,6 +486,7 @@ extension CarbCorrection {
             "Status: \(carbCorrectionStatus)",
             "Current glucose [mg/dL]: \(String(describing: glucose?.quantity.doubleValue(for: unit)))",
             "Current glucose date: \(String(describing: glucose?.startDate))",
+            "timeSinceLastNotification [min]: \(timeSinceLastNotification.minutes)",
             "Suggested carb correction [g]: \(String(describing: carbCorrectionNotification.grams))",
             "Low predicted in [min]: \(String(describing: carbCorrectionNotification.lowPredictedIn.minutes))",
             "Slow absorbing carbs remaining [g]: \(String(describing: carbCorrectionNotification.gramsRemaining))",
