@@ -34,8 +34,8 @@ class CarbCorrection {
      */
     private let carbCorrectionThreshold: Int = 3 // do not bother with carb correction notifications below this value, only display badge
     private let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
-    private let expireCarbsThreshold: Double = 0.4 // absorption rate below this fraction of modeled carb absorption triggers warning about slow carb absorption
-    private let carbCorrectionSkipFraction: Double = 0.33 // suggested carb correction calculated to bring bg above suspendThreshold after carbCorrectionSkipFraction of carbCorrectionAbsorptionTime
+    private let expireCarbsThreshold: Double = 0.7 // absorption rate below this fraction of modeled carb absorption triggers warning about slow carb absorption
+    private let carbCorrectionSkipFraction: Double = 0.4 // suggested carb correction calculated to bring bg above suspendThreshold after carbCorrectionSkipFraction of carbCorrectionAbsorptionTime
     
     /// All math is performed with glucose expressed in mg/dL
     private let unit = HKUnit.milligramsPerDeciliter
@@ -168,7 +168,7 @@ class CarbCorrection {
             averageAbsorbingFraction = averageCounteraction / modeledCarbEffect
             NSLog("myLoop: current absorbing fraction = %4.2f", currentAbsorbingFraction)
             NSLog("myLoop: average absorbing fraction = %4.2f", averageAbsorbingFraction)
-            if ((2 * currentAbsorbingFraction - averageAbsorbingFraction) < expireCarbsThreshold && averageAbsorbingFraction < 2.0 * expireCarbsThreshold) {
+            if (currentAbsorbingFraction < 0.5 * expireCarbsThreshold && averageAbsorbingFraction < expireCarbsThreshold) {
                 slowAbsorbingCheck = "Yes"
                 if useRetrospection {
                     effects = [.unexpiredCarbs, .insulin, .momentum, .zeroTemp, .retrospection]
