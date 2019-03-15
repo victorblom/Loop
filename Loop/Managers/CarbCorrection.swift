@@ -502,6 +502,7 @@ extension CarbCorrection {
             "expireCarbsThreshold fraction: \(expireCarbsThreshold)",
             "carbCorrectionSkipFraction: \(carbCorrectionSkipFraction)",
             "carbCorrectionAbsorptionTime [min]: \(carbCorrectionAbsorptionTime.minutes)",
+            "snoozeTime [min]: \(snoozeTime.minutes)",
             "----------------------------",
             "Predicted glucose from unexpired carbs: \(String(describing: predictedGlucoseUnexpiredCarbs))"
         ]
