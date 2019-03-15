@@ -12,11 +12,26 @@ import LoopKit
 
 
 /**
- Carb Correction description comments
+    Carb Correction calculates the amount of carbs (in grams) needed to treat a predicted low (blood glucose falling below suspend threshold level). The calculation is based on combinations of the effects contributing to glucose forecast, including the effects of hypotetical suspension of insulin delivery in the form of setting the temporary basal to zero. If found that zero temping is insufficient to prevent a low, the algorithm issues a Carb Correction Notification, which includes a suggested amount of carbs needed to treat the predicted low.
  */
 class CarbCorrection {
     
-    /// Carb correction variables: effects
+    /**
+     Carb correction algorithm parameters:
+     - carbCorrectionThreshold: Do not issue notifications if grams required are below this value, only set the badge notification to the grams required
+     - carbCorrectionSkipFraction: Suggested correction grams required calculated bring predicted glucose above suspend threshold after this fraction of assumed correciton carb absorption time equal to carbCorrectionAbsorptionTime
+     - expireCarbsThreshold: observed insulin counteraction below below this fraction of modeled carb absorption triggers consideration of slow carb absorption scenario
+     - notificationSnoozeTime: snooze notifications within this time interval, with an exception of badge notification
+     */
+    private let carbCorrectionThreshold: Int = 3
+    private let carbCorrectionSkipFraction: Double = 0.33
+    private let expireCarbsThreshold: Double = 0.7
+    private let notificationSnoozeTime: TimeInterval = .minutes(19)
+    
+    /// All math is performed with glucose expressed in mg/dL
+    private let unit = HKUnit.milligramsPerDeciliter
+    
+    /// Carb correction public variables: effects
     public var insulinEffect: [GlucoseEffect]?
     public var carbEffect: [GlucoseEffect]?
     public var carbEffectFutureFood: [GlucoseEffect]?
@@ -25,25 +40,15 @@ class CarbCorrection {
     public var retrospectiveGlucoseEffect: [GlucoseEffect]?
     public var insulinCounteractionEffects: [GlucoseEffectVelocity]?
     
-    var suggestedCarbCorrection: Int?
-    var glucose: GlucoseValue?
+    /// Suggested carb correction in grams
+    private var suggestedCarbCorrection: Int?
+    /// Current glucose
+    private var glucose: GlucoseValue?
     
-    /**
-     Carb correction math parameters:
-     -
-     */
-    private let carbCorrectionThreshold: Int = 3 // do not bother with carb correction notifications below this value, only display badge
-    private let carbCorrectionFactor: Double = 1.1 // increase correction carbs by 10% to avoid repeated notifications in case the user accepts the recommendation as is
-    private let expireCarbsThreshold: Double = 0.7 // absorption rate below this fraction of modeled carb absorption triggers warning about slow carb absorption
-    private let carbCorrectionSkipFraction: Double = 0.4 // suggested carb correction calculated to bring bg above suspendThreshold after carbCorrectionSkipFraction of carbCorrectionAbsorptionTime
-    private let snoozeTime: TimeInterval = .minutes(19)
-    
-    /// All math is performed with glucose expressed in mg/dL
-    private let unit = HKUnit.milligramsPerDeciliter
-    
+    /// Absorption time for correction carbs
     private let carbCorrectionAbsorptionTime: TimeInterval
     
-    /// Variables for diagnostic report
+    /// Diagnostic report variables
     private var carbCorrectionStatus: String = "-"
     private var carbCorrection: Double = 0.0
     private var carbCorrectionExpiredCarbs: Double = 0.0
@@ -65,12 +70,9 @@ class CarbCorrection {
     
     /**
      Initialize
-     
      - Parameters:
-     - settings: User settings
-     - insulinSensitivity: User insulin sensitivity schedule
-     
-     - Returns: Integral Retrospective Correction customized with controller parameters and user settings
+     - carbCorrectionAbsorptionTime: Absorption time for hypotetical correction carbs
+     - Returns: Carb Correction customized with carb correction absorption time
      */
     init(_ carbCorrectionAbsorptionTime: TimeInterval) {
         self.carbCorrectionAbsorptionTime = carbCorrectionAbsorptionTime
@@ -78,20 +80,16 @@ class CarbCorrection {
         self.carbCorrectionNotification.lowPredictedIn = .minutes(0.0)
         self.carbCorrectionNotification.gramsRemaining = 0
         self.carbCorrectionNotification.type = .noCorrection
-        self.lastNotificationDate = Date().addingTimeInterval(-snoozeTime)
+        self.lastNotificationDate = Date().addingTimeInterval(-notificationSnoozeTime)
     }
     
     /**
-     Calculates carb correction
-     
+     Calculates suggested carb correction and issues notification if need be
      - Parameters:
      - glucose: Most recent glucose
-     
      - Returns:
-     - suggested carb correction, if needed
+     - suggestedCarbCorrection: suggested carb correction in grams, if needed
      */
-    
-    // carb correction recommendation
     public func updateCarbCorrection(_ glucose: GlucoseValue) throws -> Int? {
 
         NSLog("myLoop: +++ updateCarbCorrection +++")
@@ -206,11 +204,11 @@ class CarbCorrection {
             }
         }
         
-        carbCorrectionNotification.grams = Int(ceil(carbCorrectionFactor * carbCorrection))
+        carbCorrectionNotification.grams = Int(ceil(1.1 * carbCorrection))
         suggestedCarbCorrection = carbCorrectionNotification.grams
         carbCorrectionNotification.lowPredictedIn = timeToLow
         NSLog("myLoop correction %d g in %4.2f minutes", carbCorrectionNotification.grams, timeToLow.minutes)
-        carbCorrectionNotification.gramsRemaining = Int(ceil(carbCorrectionFactor * carbCorrectionExpiredCarbs))
+        carbCorrectionNotification.gramsRemaining = Int(ceil(1.1 * carbCorrectionExpiredCarbs))
         NSLog("myLoop warning %d g in %4.2f minutes", carbCorrectionNotification.gramsRemaining, timeToLowExpiredCarbs.minutes)
         carbCorrectionNotification.type = .noCorrection
         
@@ -241,7 +239,7 @@ class CarbCorrection {
         // carb correction notification, no warning
         if ( carbCorrectionNotification.grams >= carbCorrectionThreshold && carbCorrectionNotification.gramsRemaining < carbCorrectionThreshold) {
             carbCorrectionNotification.type = .correction
-            if timeSinceLastNotification > snoozeTime {
+            if timeSinceLastNotification > notificationSnoozeTime {
                 NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
                     lastNotificationDate = Date()
             } else {
@@ -253,7 +251,7 @@ class CarbCorrection {
         // warning slow absorbing carbs
         if ( carbCorrectionNotification.grams < carbCorrectionThreshold && carbCorrectionNotification.gramsRemaining >= carbCorrectionThreshold) {
             carbCorrectionNotification.type = .warning
-            if timeSinceLastNotification > snoozeTime {
+            if timeSinceLastNotification > notificationSnoozeTime {
                 NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
                 lastNotificationDate = Date()
             }
@@ -263,7 +261,7 @@ class CarbCorrection {
         // correction notification and warning
         if ( carbCorrectionNotification.grams >= carbCorrectionThreshold && carbCorrectionNotification.gramsRemaining >= carbCorrectionThreshold) {
             carbCorrectionNotification.type = .correctionWarning
-            if timeSinceLastNotification > snoozeTime {
+            if timeSinceLastNotification > notificationSnoozeTime {
                 NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
                 lastNotificationDate = Date()
             } else {
@@ -276,7 +274,14 @@ class CarbCorrection {
         return( suggestedCarbCorrection )
     }
     
-    // suggested carb correction for glucose prediction based on effects
+    /**
+     Calculates suggested carb correction required given considered effects
+     - Parameters:
+     - effects: Effects contribution to glucose forecast
+     - Returns:
+     - (carbCorrection, timeToLow) tuple of grams required and time interval to predicted low
+     - Throws: error if settings are not available
+     */
     private func carbsRequired(_ effects: PredictionInputEffect) throws -> (Double, TimeInterval) {
         
         var carbCorrection: Double = 0.0
@@ -297,7 +302,8 @@ class CarbCorrection {
                 throw LoopError.invalidData(details: "Settings not available, updateCarbCorrection failed")
         }
         
-        let carbCorrectionSkipInterval: TimeInterval = self.carbCorrectionSkipFraction * carbCorrectionAbsorptionTime // ignore dips below suspend threshold within the initial skip interval
+        // ignore dips below suspend threshold within the initial skip interval
+        let carbCorrectionSkipInterval: TimeInterval = self.carbCorrectionSkipFraction * carbCorrectionAbsorptionTime
         
         let predictedGlucoseForCarbCorrection = try predictGlucose(using: effects)
         guard let currentDate = predictedGlucoseForCarbCorrection.first?.startDate else {
@@ -325,7 +331,14 @@ class CarbCorrection {
         return (carbCorrection, timeToLow)
     }
 
-    /// - Throws: LoopError.missingDataError
+    /**
+     Calculates suggested carb correction required given considered effects
+     - Parameters:
+     - effects: Effects contribution to glucose forecast
+     - Returns:
+     - prediction: Timeline of predicted glucose values
+     - Throws: LoopError.missingDataError if glucose is missing or LoopError.configurationError(.insulinModel) if insulin model undefined
+     */
     fileprivate func predictGlucose(using inputs: PredictionInputEffect) throws -> [GlucoseValue] {
         
         guard let model = UserDefaults.appGroup.insulinModelSettings?.model else {
@@ -373,7 +386,11 @@ class CarbCorrection {
         return prediction
     }
     
-    // get modeled carb absorption
+    /**
+     Calculates modeled carb absorption
+     - Returns:
+     - modeledCarbEffect: modeled carb effect expressed as impact on blood glucose in mg/dL over the next 5 minutes
+     */
     fileprivate func modeledCarbAbsorption() -> Double? {
         let effects: PredictionInputEffect = [.carbs]
         var predictedGlucose: [GlucoseValue]?
@@ -409,7 +426,11 @@ class CarbCorrection {
         
     }
   
-    // counteraction
+    /**
+     Calculates recent insulin counteraction
+     - Returns:
+     - counteraction: tuple of (currentCounteraction, averageCounteraction) representing current counteraction computed using linear regression over the past 20 min, and average counteraction computed using averaging over the past 20 min
+     */
     fileprivate func recentInsulinCounteraction() -> Counteraction {
         
         var counteraction: Counteraction
@@ -462,6 +483,7 @@ class CarbCorrection {
 
 }
 
+/// Carb correction notification types
 struct CarbCorrectionNotificationOption: OptionSet {
     let rawValue: Int
     
@@ -502,7 +524,7 @@ extension CarbCorrection {
             "expireCarbsThreshold fraction: \(expireCarbsThreshold)",
             "carbCorrectionSkipFraction: \(carbCorrectionSkipFraction)",
             "carbCorrectionAbsorptionTime [min]: \(carbCorrectionAbsorptionTime.minutes)",
-            "snoozeTime [min]: \(snoozeTime.minutes)",
+            "snoozeTime [min]: \(notificationSnoozeTime.minutes)",
             "----------------------------",
             "Predicted glucose from unexpired carbs: \(String(describing: predictedGlucoseUnexpiredCarbs))"
         ]
