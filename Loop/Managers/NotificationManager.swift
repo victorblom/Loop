@@ -272,7 +272,7 @@ struct NotificationManager {
             }
         case .warning:
             notification.body = String(format: NSLocalizedString("Warning: Slow Absorbing Carbs (%1$@ g Remaining)", comment: "Slow carb absorption warning format string. (1: Correction needed if remaining carbs expire)"), gramsRemainingString)
-        case .correctionWarning:
+        case .correctionPlusWarning:
             if lowPredictedIn < imminentLowTimeInterval {
                 notification.body = String(format: NSLocalizedString("%1$@ g Recommended, Warning: Slow Absorbing Carbs (%2$@ g Remaining)", comment: "Carb correction for imminent low alert format string. (1: Recommended correction grams)(2: Correction needed if remaining carbs expire)"), gramsString, gramsRemainingString)
             } else {

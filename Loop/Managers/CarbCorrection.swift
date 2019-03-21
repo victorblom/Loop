@@ -25,7 +25,7 @@ class CarbCorrection {
      */
     private let carbCorrectionThreshold: Int = 3
     private let carbCorrectionSkipFraction: Double = 0.33
-    private let expireCarbsThreshold: Double = 0.7
+    private let expireCarbsThresholdFraction: Double = 0.7
     private let notificationSnoozeTime: TimeInterval = .minutes(19)
     
     /// Math is performed with glucose expressed in mg/dL
@@ -49,10 +49,10 @@ class CarbCorrection {
     private let carbCorrectionAbsorptionTime: TimeInterval
     
     /// State variables for diagnostic report
-    private var carbCorrectionStatus: String = "-"
     private var carbCorrection: Double = 0.0
     private var carbCorrectionExpiredCarbs: Double = 0.0
     private var carbCorrectionExcessInsulin: Double = 0.0
+    private var carbCorrectionStatus: String = "-"
     private var timeToLow: TimeInterval = TimeInterval.minutes(0.0)
     private var timeToLowExpiredCarbs: TimeInterval = TimeInterval.minutes(0.0)
     private var timeToLowExcessInsulin: TimeInterval = TimeInterval.minutes(0.0)
@@ -71,7 +71,7 @@ class CarbCorrection {
     /**
      Initialize
      - Parameters:
-     - carbCorrectionAbsorptionTime: Absorption time for hypothetical correction carbs
+     - carbCorrectionAbsorptionTime: Absorption time for correction carbs
      - Returns: Carb Correction customized with carb correction absorption time
      */
     init(_ carbCorrectionAbsorptionTime: TimeInterval) {
@@ -92,30 +92,25 @@ class CarbCorrection {
      */
     public func updateCarbCorrection(_ glucose: GlucoseValue) throws -> Int? {
 
-        NSLog("myLoop: +++ updateCarbCorrection +++")
         self.glucose = glucose
         suggestedCarbCorrection = nil
         
         guard glucoseMomentumEffect != nil else {
-            NSLog("myLoop: ERROR momentum not available ")
             carbCorrectionStatus = "Error: momentum effects not available"
             throw LoopError.missingDataError(.momentumEffect)
         }
         
         guard carbEffect != nil else {
-            NSLog("myLoop: ERROR carb effects not set ")
             carbCorrectionStatus = "Error: carb effects not available"
             throw LoopError.missingDataError(.carbEffect)
         }
         
         guard insulinEffect != nil else {
-            NSLog("myLoop: ERROR insulin effects not set ")
             carbCorrectionStatus = "Error: insulin effects not available"
             throw LoopError.missingDataError(.insulinEffect)
         }
         
         guard zeroTempEffect != nil else {
-            NSLog("myLoop: ERROR no zero temp effects ")
             carbCorrectionStatus = "Error: zero temp effects not available"
             throw LoopError.invalidData(details: "zeroTempEffect not available, updateCarbCorrection failed")
         }
@@ -157,7 +152,6 @@ class CarbCorrection {
         }
         do {
             (carbCorrection, timeToLow) = try carbsRequired(effects)
-            NSLog("myLoop correction: %4.2f g in %4.2f minutes", carbCorrection, timeToLow.minutes)
         } catch {
             carbCorrectionStatus = "Error: glucose prediction failed with effects: \(effects)."
             throw LoopError.invalidData(details: "Could not compute carbs required, updateCarbCorrection failed")
@@ -168,9 +162,7 @@ class CarbCorrection {
         if modeledCarbEffect > 0.0 {
             currentAbsorbingFraction = currentCounteraction / modeledCarbEffect
             averageAbsorbingFraction = averageCounteraction / modeledCarbEffect
-            NSLog("myLoop: current absorbing fraction = %4.2f", currentAbsorbingFraction)
-            NSLog("myLoop: average absorbing fraction = %4.2f", averageAbsorbingFraction)
-            if (currentAbsorbingFraction < 0.5 * expireCarbsThreshold && averageAbsorbingFraction < expireCarbsThreshold) {
+            if (currentAbsorbingFraction < 0.5 * expireCarbsThresholdFraction && averageAbsorbingFraction < expireCarbsThresholdFraction) {
                 slowAbsorbingCheck = "Yes"
                 if useRetrospection {
                     effects = [.unexpiredCarbs, .insulin, .momentum, .zeroTemp, .retrospection]
@@ -183,7 +175,6 @@ class CarbCorrection {
                     carbCorrectionStatus = "Error: glucose prediction failed with effects: \(effects)."
                     throw LoopError.invalidData(details: "Could not compute carbs required when past carbs expired, updateCarbCorrection failed")
                 }
-                NSLog("myLoop expired carb warning: %4.2f g in %4.2f minutes", carbCorrectionExpiredCarbs, timeToLowExpiredCarbs.minutes)
             }
         } else {
             currentAbsorbingFraction = 0.0
@@ -198,7 +189,6 @@ class CarbCorrection {
                     carbCorrectionStatus = "Error: glucose prediction failed with effects: \(effects)."
                     throw LoopError.invalidData(details: "Could not compute carbs required when excess insulin detected, updateCarbCorrection failed")
                 }
-                NSLog("myLoop Excess insulin action detected, correction: %4.2f g in %4.2f minutes", carbCorrectionExcessInsulin, timeToLowExcessInsulin.minutes)
                 carbCorrection = carbCorrectionExcessInsulin
                 timeToLow = timeToLowExcessInsulin
             }
@@ -207,9 +197,7 @@ class CarbCorrection {
         carbCorrectionNotification.grams = Int(ceil(1.1 * carbCorrection))
         suggestedCarbCorrection = carbCorrectionNotification.grams
         carbCorrectionNotification.lowPredictedIn = timeToLow
-        NSLog("myLoop correction %d g in %4.2f minutes", carbCorrectionNotification.grams, timeToLow.minutes)
         carbCorrectionNotification.gramsRemaining = Int(ceil(1.1 * carbCorrectionExpiredCarbs))
-        NSLog("myLoop warning %d g in %4.2f minutes", carbCorrectionNotification.gramsRemaining, timeToLowExpiredCarbs.minutes)
         carbCorrectionNotification.type = .noCorrection
         
         carbCorrectionStatus = "Successfully completed."
@@ -259,7 +247,7 @@ class CarbCorrection {
 
         // correction notification and warning
         if ( carbCorrectionNotification.grams >= carbCorrectionThreshold && carbCorrectionNotification.gramsRemaining >= carbCorrectionThreshold) {
-            carbCorrectionNotification.type = .correctionWarning
+            carbCorrectionNotification.type = .correctionPlusWarning
             if timeSinceLastNotification > notificationSnoozeTime {
                 NotificationManager.sendCarbCorrectionNotification(carbCorrectionNotification)
                 lastNotificationDate = Date()
@@ -417,10 +405,7 @@ class CarbCorrection {
             let glucose2 = modeledCarbOnlyGlucose[2].quantity.doubleValue(for: unit)
             modeledCarbEffect = glucose2 - glucose1
         }
-        
-        NSLog("myLoop: modeled carb effect %4.2f", modeledCarbEffect!)
         return( modeledCarbEffect )
-        
     }
   
     /**
@@ -442,12 +427,6 @@ class CarbCorrection {
         
         let counteractionValues = counterActions.map( { $0.effect.quantity.doubleValue(for: unit) } )
         let counteractionTimes = counterActions.map( { $0.effect.startDate.timeIntervalSince(latestGlucoseDate).minutes } )
-        for counteractionValue in counteractionValues {
-            NSLog("myLoop: counteraction %4.2f", counteractionValue)
-        }
-        for counteractionTime in counteractionTimes {
-            NSLog("myLoop: counteraction time %4.2f", counteractionTime)
-        }
 
         guard counteractionValues.count > 2 else {
             return( counteraction )
@@ -456,8 +435,6 @@ class CarbCorrection {
         let insulinCounteractionFit = linearRegression(counteractionTimes, counteractionValues)
         counteraction.currentCounteraction = insulinCounteractionFit(0.0)
         counteraction.averageCounteraction = average( counteractionValues )
-        NSLog("myLoop: current counteraction: %4.2f", counteraction.currentCounteraction!)
-        NSLog("myLoop: average counteraction: %4.2f", counteraction.averageCounteraction!)
         
         return( counteraction )
     }
@@ -480,17 +457,16 @@ class CarbCorrection {
 
 }
 
-/// Carb correction notification types
 struct CarbCorrectionNotificationOption: OptionSet {
     let rawValue: Int
     
     static let noCorrection = CarbCorrectionNotificationOption(rawValue: 1 << 0)
     static let correction = CarbCorrectionNotificationOption(rawValue: 1 << 1)
     static let warning = CarbCorrectionNotificationOption(rawValue: 1 << 2)
-    static let correctionWarning = CarbCorrectionNotificationOption(rawValue: 1 << 3)
+
+    static let correctionPlusWarning: CarbCorrectionNotificationOption = [.correction, .warning]
 }
 
-/// Notification tuple
 typealias CarbCorrectionNotification = (grams: Int, lowPredictedIn: TimeInterval, gramsRemaining: Int, type: CarbCorrectionNotificationOption)
 
 typealias Counteraction = (currentCounteraction: Double?, averageCounteraction: Double?)
@@ -516,13 +492,17 @@ extension CarbCorrection {
             "currentAbsorbingFraction: \(currentAbsorbingFraction)",
             "averageAbsorbingFraction: \(averageAbsorbingFraction)",
             "Check slow carb absorption: \(slowAbsorbingCheck)",
+            "carbCorrectionExpiredCarbs [g]: \(carbCorrectionExpiredCarbs)",
+            "timeToLowExpiredCarbs [min]: \(timeToLowExpiredCarbs.minutes)",
             "Check excess insulin action: \(excessInsulinAction)",
+            "carbCorrectionExcessInsulin [g]: \(carbCorrectionExcessInsulin)",
+            "timeToLowExcessInsulin [min]: \(timeToLowExcessInsulin.minutes)",
             "Using retrospection: \(usingRetrospection)",
             "carbCorrectionThreshold [g]: \(carbCorrectionThreshold)",
-            "expireCarbsThreshold fraction: \(expireCarbsThreshold)",
+            "expireCarbsThresholdFraction: \(expireCarbsThresholdFraction)",
             "carbCorrectionSkipFraction: \(carbCorrectionSkipFraction)",
             "carbCorrectionAbsorptionTime [min]: \(carbCorrectionAbsorptionTime.minutes)",
-            "snoozeTime [min]: \(notificationSnoozeTime.minutes)",
+            "notificationSnoozeTime [min]: \(notificationSnoozeTime.minutes)",
             "----------------------------",
             "Predicted glucose from unexpired carbs: \(String(describing: predictedGlucoseUnexpiredCarbs))"
         ]
