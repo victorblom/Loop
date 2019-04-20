@@ -9,7 +9,7 @@
 import Foundation
 import HealthKit
 import LoopKit
-
+import LoopCore
 
 /**
     Carb correction algorithm calculates the amount of carbs (in grams) needed to treat a predicted low (blood glucose predicted to fall below suspend threshold level). The calculation is based on glucose forecast scenarios, which include the effect of suspension of insulin delivery by setting the temporary basal rate to zero. If it is found that zero temping is insufficient to prevent the low, the algorithm issues a Carb Correction Notification, which includes a suggested amount of carbs needed to treat the predicted low.
@@ -271,10 +271,10 @@ class CarbCorrection {
         
         var carbCorrection: Double = 0.0
         var timeToLow: TimeInterval = TimeInterval.minutes(0.0)
-        let carbRatioSchedule: CarbRatioSchedule? = UserDefaults.appGroup.carbRatioSchedule
-        let insulinSensitivitySchedule: InsulinSensitivitySchedule? = UserDefaults.appGroup.insulinSensitivitySchedule
-        let insulinModelSettings: InsulinModelSettings? = UserDefaults.appGroup.insulinModelSettings
-        let settings: LoopSettings = UserDefaults.appGroup.loopSettings ?? LoopSettings()
+        let carbRatioSchedule: CarbRatioSchedule? = UserDefaults.appGroup?.carbRatioSchedule
+        let insulinSensitivitySchedule: InsulinSensitivitySchedule? = UserDefaults.appGroup?.insulinSensitivitySchedule
+        let insulinModelSettings: InsulinModelSettings? = UserDefaults.appGroup?.insulinModelSettings
+        let settings: LoopSettings = UserDefaults.appGroup?.loopSettings ?? LoopSettings()
         
         // Get settings, otherwise throw error
         guard
@@ -326,7 +326,7 @@ class CarbCorrection {
      */
     fileprivate func predictGlucose(using inputs: PredictionInputEffect) throws -> [GlucoseValue] {
         
-        guard let model = UserDefaults.appGroup.insulinModelSettings?.model else {
+        guard let model = UserDefaults.appGroup?.insulinModelSettings?.model else {
             throw LoopError.configurationError(.insulinModel)
         }
         
