@@ -54,6 +54,13 @@ final class LoopDataManager {
 
     // Make overall retrospective effect available for display to the user
     var totalRetrospectiveCorrection: HKQuantity?
+    
+    // dm61 variables for mean square error calculation
+    var meanSquareError: Double = 0
+    var nMSE: Double = 0.0
+    var currentGlucoseValue: Double = 0
+    var previouslyPredictedGlucoseValue: Double = 0
+    var previouslyPredictedGlucose: GlucoseValue? = nil
 
     init(
         lastLoopCompleted: Date?,
@@ -759,7 +766,6 @@ extension LoopDataManager {
 
         // carb correction recommendation
         if suggestedCarbCorrection == nil {
-            // wip-remove-LoopDataManager-implmentation try updateCarbCorrection()
             carbCorrection.insulinEffect = insulinEffect
             carbCorrection.carbEffect = carbEffect
             carbCorrection.carbEffectFutureFood = carbEffectFutureFood
@@ -768,6 +774,17 @@ extension LoopDataManager {
             carbCorrection.insulinCounteractionEffects = insulinCounteractionEffects
             carbCorrection.retrospectiveGlucoseEffect = retrospectiveGlucoseEffect
             if let latestGlucose = self.glucoseStore.latestGlucose {
+                // dm61 mse calculation
+                if let currentGlucose = predictedGlucose?.first {
+                    if let predictedValue = previouslyPredictedGlucose?.quantity.doubleValue(for: .milligramsPerDeciliter) {
+                        currentGlucoseValue = currentGlucose.quantity.doubleValue(for: .milligramsPerDeciliter)
+                        previouslyPredictedGlucoseValue = predictedValue
+                        nMSE += 1.0
+                        meanSquareError = (meanSquareError * (nMSE - 1) + pow((currentGlucoseValue - previouslyPredictedGlucoseValue), 2)) / nMSE
+                    }
+                    previouslyPredictedGlucose = predictedGlucose?[1]
+                }
+                // dm61
                 do {
                      try suggestedCarbCorrection = carbCorrection.updateCarbCorrection(latestGlucose)
                 } catch let error {
@@ -1211,6 +1228,12 @@ extension LoopDataManager {
 
             var entries: [String] = [
                 "## LoopDataManager",
+                // dm61 mse calculation
+                "Latest glucose value: \(self.currentGlucoseValue)",
+                "Predicted glucose value: \(self.previouslyPredictedGlucoseValue)",
+                "n: \(self.nMSE)",
+                "MeanSquareError: \(self.meanSquareError)\n",
+                // dm61
                 "settings: \(String(reflecting: manager.settings))",
 
                 "insulinCounteractionEffects: [",
