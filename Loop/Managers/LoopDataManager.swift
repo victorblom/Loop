@@ -205,6 +205,12 @@ final class LoopDataManager {
 
     fileprivate var lastTempBasal: DoseEntry?
     fileprivate var lastRequestedBolus: DoseEntry?
+    
+    
+    //dm61 variables for parameter estimation
+    private var historicalCarbEffectUserEntered: [GlucoseEffect]?
+    private var historicalInsulinEffect: [GlucoseEffect]?
+    private var historicalGlucose: [GlucoseValue] = []
 
     /// The last date at which a loop completed, from prediction to dose (if dosing is enabled)
     var lastLoopCompleted: Date? {
@@ -656,6 +662,15 @@ extension LoopDataManager {
                 updateGroup.leave()
             }
         }
+        
+        // dm61 collect blood glucose values for parameter estimation over past 24 hours
+        let startHistoricalGlucose = lastGlucoseDate.addingTimeInterval(.hours(-24.0))
+        updateGroup.enter()
+        glucoseStore.getCachedGlucoseSamples(start: startHistoricalGlucose) { (values) in
+            self.historicalGlucose = values
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
 
         if insulinEffect == nil {
             updateGroup.enter()
@@ -670,6 +685,23 @@ extension LoopDataManager {
 
                 updateGroup.leave()
             }
+            
+            // dm61 collect insulin effect time series for parameter estimation
+            // effects due to insulin over past 24 hours
+            let startHistoricalInsulinEffect = lastGlucoseDate.addingTimeInterval(.hours(-24.0))
+            updateGroup.enter()
+            doseStore.getGlucoseEffects(start: startHistoricalInsulinEffect) { (result) -> Void in
+                switch result {
+                case .failure(let error):
+                    self.logger.error(error)
+                    self.historicalInsulinEffect = nil
+                case .success(let effects):
+                    self.historicalInsulinEffect = effects.filterDateRange(startHistoricalInsulinEffect, lastGlucoseDate)
+                }
+                
+                updateGroup.leave()
+            }
+            
         }
 
         _ = updateGroup.wait(timeout: .distantFuture)
@@ -719,6 +751,27 @@ extension LoopDataManager {
                     self.carbEffectFutureFood = effects
                 }
 
+                updateGroup.leave()
+            }
+            
+            // dm61 collect carb effect time series for parameter estimation
+            // effects due to user-entered food entries over past 24 hours, extended by 8 hours to account for longest absorbing entries prior to 24 hours ago
+            let startHistoricalCarbEffectAsEntered = lastGlucoseDate.addingTimeInterval(.hours(-24.0))
+            let startHistoricalCarbEffectAsEnteredExtended = startHistoricalCarbEffectAsEntered.addingTimeInterval(.hours(-8.0))
+            updateGroup.enter()
+            carbStore.getGlucoseEffects(
+                start: startHistoricalCarbEffectAsEnteredExtended,
+                sampleStart: startHistoricalCarbEffectAsEnteredExtended,
+                effectVelocities: []
+            ) { (result) -> Void in
+                switch result {
+                case .failure(let error):
+                    self.logger.error(error)
+                    self.historicalCarbEffectUserEntered = nil
+                case .success(let effects):
+                    self.historicalCarbEffectUserEntered = effects.filterDateRange(startHistoricalCarbEffectAsEntered, lastGlucoseDate)
+                }
+                
                 updateGroup.leave()
             }
 
@@ -1240,6 +1293,31 @@ extension LoopDataManager {
                 "* GlucoseEffectVelocity(start, end, mg/dL/min)",
                 manager.insulinCounteractionEffects.reduce(into: "", { (entries, entry) in
                     entries.append("* \(entry.startDate), \(entry.endDate), \(entry.quantity.doubleValue(for: GlucoseEffectVelocity.unit))\n")
+                }),
+                "]",
+                
+                // dm61 historical data for parameter estimation
+                // dm61 user entered carb effects
+                "historicalCarbEffectUserEntered: [",
+                "* GlucoseEffect(start, mg/dL)",
+                (manager.historicalCarbEffectUserEntered ?? []).reduce(into: "", { (entries, entry) in
+                    entries.append("* \(entry.startDate),  \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
+                }),
+                "]",
+                
+                // dm61 insulin effects
+                "historicalInsulinEffect: [",
+                "* GlucoseEffect(start, mg/dL)",
+                (manager.historicalInsulinEffect ?? []).reduce(into: "", { (entries, entry) in
+                    entries.append("* \(entry.startDate),  \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
+                }),
+                "]",
+                
+                // dm61 historical glucose data (just to check), may not need
+                "historicalGlucose: [",
+                "* HistoricalGlucoseValues(start, mg/dL)",
+                manager.historicalGlucose.reduce(into: "", { (entries, entry) in
+                    entries.append("* \(entry.startDate), \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
                 }),
                 "]",
 
