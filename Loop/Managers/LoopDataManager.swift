@@ -774,7 +774,7 @@ extension LoopDataManager {
             }
         }
         
-
+        /*
         // dm61 collect data for parameter estimation, do only after Loop cycle completed
         if suggestedCarbCorrection == nil {
             
@@ -879,8 +879,9 @@ extension LoopDataManager {
         for absorbed in absorbedCarbs {
             absorbed.estimateParameters(glucose: historicalGlucose, insulin: historicalInsulinEffect, carbs: historicalCarbEffect, counteraction: insulinCounteractionEffects)
         }
+        */
 
-        // carb correction recommendation
+        // dm61 carb correction recommendation
         if suggestedCarbCorrection == nil {
             carbCorrection.insulinEffect = insulinEffect
             carbCorrection.carbEffect = carbEffect
@@ -909,6 +910,193 @@ extension LoopDataManager {
             }
         }
 
+    }
+    
+    /// - Throws:
+    ///     - LoopError.configurationError
+    ///     - LoopError.glucoseTooOld
+    ///     - LoopError.missingDataError
+    ///     - LoopError.pumpDataTooOld
+    fileprivate func updateParameterEstimates() throws {
+        dispatchPrecondition(condition: .onQueue(dataAccessQueue))
+        let updateGroup = DispatchGroup()
+        
+        // Fetch glucose effects as far back as we want to make retroactive analysis
+        var latestGlucoseDate: Date?
+        updateGroup.enter()
+        glucoseStore.getCachedGlucoseSamples(start: Date(timeIntervalSinceNow: -settings.recencyInterval)) { (values) in
+            latestGlucoseDate = values.last?.startDate
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        
+        guard let lastGlucoseDate = latestGlucoseDate else {
+            throw LoopError.missingDataError(.glucose)
+        }
+        
+        let retrospectiveStart = lastGlucoseDate.addingTimeInterval(-settings.retrospectiveCorrectionIntegrationInterval)
+        
+        let earliestEffectDate = Date(timeIntervalSinceNow: .hours(-24))
+        let nextEffectDate = insulinCounteractionEffects.last?.endDate ?? earliestEffectDate
+        
+        if glucoseMomentumEffect == nil {
+            updateGroup.enter()
+            glucoseStore.getRecentMomentumEffect { (effects) -> Void in
+                self.glucoseMomentumEffect = effects
+                updateGroup.leave()
+            }
+        }
+        
+        if insulinEffect == nil {
+            updateGroup.enter()
+            doseStore.getGlucoseEffects(start: nextEffectDate) { (result) -> Void in
+                switch result {
+                case .failure(let error):
+                    self.logger.error(error)
+                    self.insulinEffect = nil
+                case .success(let effects):
+                    self.insulinEffect = effects
+                }
+                
+                updateGroup.leave()
+            }
+            
+        }
+        
+        _ = updateGroup.wait(timeout: .distantFuture)
+        
+        if nextEffectDate < lastGlucoseDate, let insulinEffect = insulinEffect {
+            updateGroup.enter()
+            self.logger.debug("Fetching counteraction effects after \(nextEffectDate)")
+            glucoseStore.getCounteractionEffects(start: nextEffectDate, to: insulinEffect) { (velocities) in
+                self.insulinCounteractionEffects.append(contentsOf: velocities)
+                self.insulinCounteractionEffects = self.insulinCounteractionEffects.filterDateRange(earliestEffectDate, nil)
+                
+                updateGroup.leave()
+            }
+            _ = updateGroup.wait(timeout: .distantFuture)
+        }
+        
+        if carbEffect == nil {
+            updateGroup.enter()
+            carbStore.getGlucoseEffects(
+                start: retrospectiveStart,
+                effectVelocities: settings.dynamicCarbAbsorptionEnabled ? insulinCounteractionEffects : nil
+            ) { (result) -> Void in
+                switch result {
+                case .failure(let error):
+                    self.logger.error(error)
+                    self.carbEffect = nil
+                case .success(let effects):
+                    self.carbEffect = effects
+                }
+                
+                updateGroup.leave()
+            }
+        }
+        
+        // dm61 collect data for parameter estimation
+        // dm61 collect blood glucose values for parameter estimation over past 24 hours
+        let startHistoricalGlucose = lastGlucoseDate.addingTimeInterval(.hours(-24.0))
+        updateGroup.enter()
+        glucoseStore.getCachedGlucoseSamples(start: startHistoricalGlucose) { (values) in
+            self.historicalGlucose = values
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        
+        
+        // dm61 collect insulin effect time series for parameter estimation
+        // effects due to insulin over past 24 hours
+        let startHistoricalInsulinEffect = lastGlucoseDate.addingTimeInterval(.hours(-24.0))
+        updateGroup.enter()
+        doseStore.getGlucoseEffects(start: startHistoricalInsulinEffect) { (result) -> Void in
+            switch result {
+            case .failure(let error):
+                self.logger.error(error)
+                self.historicalInsulinEffect = nil
+            case .success(let effects):
+                self.historicalInsulinEffect = effects.filterDateRange(startHistoricalInsulinEffect, lastGlucoseDate)
+            }
+            
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        
+        
+        // dm61 collect carb effect time series for parameter estimation
+        // effects due to food entries over past 24 hours
+        let startHistoricalCarbEffect = lastGlucoseDate.addingTimeInterval(.hours(-24.0))
+        updateGroup.enter()
+        carbStore.getGlucoseEffects(
+            start: startHistoricalCarbEffect,
+            effectVelocities: insulinCounteractionEffects
+        ) { (result) -> Void in
+            switch result {
+            case .failure(let error):
+                self.logger.error(error)
+                self.historicalCarbEffect = nil
+            case .success(let effects):
+                self.historicalCarbEffect = effects.filterDateRange(startHistoricalCarbEffect, lastGlucoseDate)
+            }
+            
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        
+        let listStart = startHistoricalCarbEffect
+        updateGroup.enter()
+        carbStore.getCarbStatus(start: listStart, effectVelocities:  insulinCounteractionEffects) { (result) in
+            switch result {
+            case .success(let status):
+                self.carbStatuses = status
+            case .failure(let error):
+                self.logger.error(error)
+            }
+            
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        
+        carbStatusesCompleted = carbStatuses.filter { $0.absorption?.estimatedTimeRemaining ?? TimeInterval.minutes(1.0) == TimeInterval.minutes(0.0) }
+        
+        var activeCarbsStart = Date()
+        let carbStatusesActive = carbStatuses.filter { $0.absorption?.estimatedTimeRemaining ?? TimeInterval.minutes(0.0) > TimeInterval.minutes(0.0) }
+        for carbStatus in carbStatusesActive {
+            activeCarbsStart = min(activeCarbsStart, carbStatus.startDate)
+        }
+        
+        absorbedCarbs = []
+        for carbStatus in carbStatusesCompleted {
+            guard
+                carbStatus.endDate < activeCarbsStart
+                else {
+                    continue
+            }
+            guard
+                let startDate = carbStatus.absorption?.observedDate.start,
+                let endDate = carbStatus.absorption?.observedDate.end,
+                let enteredCarbs = carbStatus.absorption?.total,
+                let observedCarbs = carbStatus.absorption?.observed
+                else {
+                    continue
+            }
+            guard
+                absorbedCarbs.last != nil,
+                absorbedCarbs.last!.endDate >= startDate
+                else {
+                    absorbedCarbs.append(AbsorbedCarbs(startDate: startDate, endDate: endDate, enteredCarbs: enteredCarbs, observedCarbs: observedCarbs))
+                    continue
+            }
+            absorbedCarbs.last!.endDate = max( absorbedCarbs.last!.endDate, endDate )
+            absorbedCarbs.last!.enteredCarbs = HKQuantity(unit: .gram(), doubleValue: enteredCarbs.doubleValue(for: .gram()) + absorbedCarbs.last!.enteredCarbs.doubleValue(for: .gram()))
+            absorbedCarbs.last!.observedCarbs = HKQuantity(unit: .gram(), doubleValue: observedCarbs.doubleValue(for: .gram()) + absorbedCarbs.last!.observedCarbs.doubleValue(for: .gram()))
+        }
+        
+        for absorbed in absorbedCarbs {
+            absorbed.estimateParameters(glucose: historicalGlucose, insulin: historicalInsulinEffect, carbs: historicalCarbEffect, counteraction: insulinCounteractionEffects)
+        }
+        
     }
 
     private func notify(forChange context: LoopUpdateContext) {
@@ -1323,6 +1511,12 @@ extension LoopDataManager {
 
             do {
                 try self.update()
+            } catch let error {
+                updateError = error
+            }
+            
+            do {
+                try self.updateParameterEstimates()
             } catch let error {
                 updateError = error
             }
