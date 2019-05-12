@@ -209,11 +209,14 @@ final class LoopDataManager {
     
     //dm61 time series variables for parameter estimation
     private var historicalCarbEffect: [GlucoseEffect]?
+    private var historicalCarbEffectAsEntered: [GlucoseEffect]?
     private var historicalInsulinEffect: [GlucoseEffect]?
     private var historicalGlucose: [GlucoseValue] = []
     private var carbStatuses: [CarbStatus<StoredCarbEntry>] = []
     private var carbStatusesCompleted: [CarbStatus<StoredCarbEntry>] = []
     private var absorbedCarbs: [AbsorbedCarbs] = []
+    private var startEstimation: Date? = nil
+    private var endEstimation: Date? = nil
 
     /// The last date at which a loop completed, from prediction to dose (if dosing is enabled)
     var lastLoopCompleted: Date? {
@@ -937,6 +940,40 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         
+        // dm61 go through carb effects to determine start/end estimation boundaries
+        var previousCarbEffect: GlucoseEffect? = nil
+        if let carbs = self.historicalCarbEffect {
+            if let startCarbs = carbs.first?.startDate {
+                if startCarbs > startHistoricalCarbEffect.addingTimeInterval(.minutes(5)) {
+                    startEstimation = startCarbs
+                } else {
+                    for carbEffect in carbs {
+                        if carbEffect.quantity == previousCarbEffect?.quantity {
+                            startEstimation = carbEffect.startDate
+                            break
+                        } else {
+                            previousCarbEffect = carbEffect
+                        }
+                    }
+                }
+            }
+            previousCarbEffect = nil
+            if let endCarbs = carbs.last?.startDate {
+                if endCarbs < lastGlucoseDate.addingTimeInterval(.minutes(-5)) {
+                    endEstimation = endCarbs
+                } else {
+                    for carbEffect in carbs.reversed() {
+                        if carbEffect.quantity == previousCarbEffect?.quantity {
+                            endEstimation = carbEffect.startDate
+                            break
+                        } else {
+                            previousCarbEffect = carbEffect
+                        }
+                    }
+                }
+            }
+        }
+        
         let listStart = startHistoricalCarbEffect
         updateGroup.enter()
         carbStore.getCarbStatus(start: listStart, effectVelocities:  insulinCounteractionEffects) { (result) in
@@ -951,24 +988,6 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         
-        
-        // dm61 go through carb effects to determine absorption/no-absorption boundaries
-        /*
-        var previousCarbEffect: GlucoseEffect? = nil
-        var noAbsorptionStart: Date? = nil
-        var noAbsorptionEnd: Date? = nil
-        if let carbs = self.historicalCarbEffect {
-            for carbEffect in carbs {
-                if carbEffect.quantity == previousCarbEffect?.quantity {
-                    noAbsorptionStart = previousCarbEffect?.startDate
-                } else {
-                    noAbsorptionEnd = carbEffect.startDate
-                }
-                previousCarbEffect = carbEffect
-            }
-        }*/
-        
-        
         carbStatusesCompleted = carbStatuses.filter { $0.absorption?.estimatedTimeRemaining ?? TimeInterval.minutes(1.0) == TimeInterval.minutes(0.0) }
         
         var activeCarbsStart = Date()
@@ -977,10 +996,13 @@ extension LoopDataManager {
             activeCarbsStart = min(activeCarbsStart, carbStatus.startDate)
         }
         
+        // carbStatusesCompleted = carbStatuses.filterDateRange(startEstimation, endEstimation)
+        
         absorbedCarbs = []
         for carbStatus in carbStatusesCompleted {
             guard
                 carbStatus.endDate < activeCarbsStart
+                // carbStatus.endDate < endEstimation ?? Date()
                 else {
                     continue
             }
@@ -1619,7 +1641,8 @@ extension LoopDataManager {
         getParameterEstimationLoopState { (manager, state) in
             
             let entries: [String] = [
-                "## Parameter Estimation",
+                "Estimation data start: \(String(describing: manager.startEstimation))",
+                "\n Estimation data end: \(String(describing: manager.endEstimation))",
                 "\n Estimates based on absorbed entries: [",
                 "* Carb entry (start, end, entered [g], observed [g]) followed by glucose effects and estimated parameter mutipliers:",
                 manager.absorbedCarbs.reduce(into: "", { (entries, entry) in
