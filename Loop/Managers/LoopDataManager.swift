@@ -945,7 +945,7 @@ extension LoopDataManager {
         if let carbs = self.historicalCarbEffect {
             if let startCarbs = carbs.first?.startDate {
                 if startCarbs > startHistoricalCarbEffect.addingTimeInterval(.minutes(5)) {
-                    startEstimation = startCarbs
+                    startEstimation = startHistoricalCarbEffect
                 } else {
                     for carbEffect in carbs {
                         if carbEffect.quantity == previousCarbEffect?.quantity {
@@ -960,7 +960,7 @@ extension LoopDataManager {
             previousCarbEffect = nil
             if let endCarbs = carbs.last?.startDate {
                 if endCarbs < lastGlucoseDate.addingTimeInterval(.minutes(-5)) {
-                    endEstimation = endCarbs
+                    endEstimation = lastGlucoseDate
                 } else {
                     for carbEffect in carbs.reversed() {
                         if carbEffect.quantity == previousCarbEffect?.quantity {
