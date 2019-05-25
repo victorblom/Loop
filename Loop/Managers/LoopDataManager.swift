@@ -1793,8 +1793,9 @@ class AbsorbedCarbs {
         let ratioObserved = self.observedCarbs.doubleValue(for: .gram()) / self.enteredCarbs.doubleValue(for: .gram())
         let deltaGlucose = endGlucose - startGlucose
         let deltaGlucoseInsulin = startInsulin - endInsulin
-        
-        self.insulinSensitivityMultiplier = min(max(ratioObserved.squareRoot(), 0.9), 1.1)
+        let deltaGlucoseCorrection = min(max(1.0 - deltaGlucose / deltaGlucoseInsulin, 0.81), 1.21)
+        let isfCorrection = ratioObserved * deltaGlucoseCorrection
+        self.insulinSensitivityMultiplier = min(max(isfCorrection.squareRoot(), 0.9), 1.1)
         guard
             let isfMultiplier = self.insulinSensitivityMultiplier
             else {
