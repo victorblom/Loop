@@ -1783,24 +1783,29 @@ class AbsorbedCarbs {
             let endGlucose = self.endGlucose?.quantity.doubleValue(for: unit),
             let startInsulin = self.startInsulinEffect?.quantity.doubleValue(for: unit),
             let endInsulin = self.endInsulinEffect?.quantity.doubleValue(for: unit),
-            //let startCarbs = self.startCarbEffect?.quantity.doubleValue(for: unit),
-            //let endCarbs = self.endCarbEffect?.quantity.doubleValue(for: unit),
-            let observedICE = self.counteractionEffect?.doubleValue(for: unit),
             startInsulin > endInsulin,
             self.enteredCarbs.doubleValue(for: .gram()) > 0.0
         else {
             return
         }
-        self.insulinSensitivityMultiplier = (observedICE - (endGlucose - startGlucose)) / (startInsulin - endInsulin)
-        self.carbSensitivityMultiplier = self.observedCarbs.doubleValue(for: .gram()) / self.enteredCarbs.doubleValue(for: .gram())
-        guard
-            let isf = self.insulinSensitivityMultiplier,
-            let csf = self.carbSensitivityMultiplier,
-            csf > 0
-        else {
-            return
-        }
-        self.carbRatioMultiplier = isf / csf
         
+        //dm61 May 25 notes: isf and cr multipliers calculated so that observed carbs = entered carbs while limiting isf multiplier
+        let ratioObserved = self.observedCarbs.doubleValue(for: .gram()) / self.enteredCarbs.doubleValue(for: .gram())
+        let deltaGlucose = endGlucose - startGlucose
+        let deltaGlucoseInsulin = startInsulin - endInsulin
+        
+        self.insulinSensitivityMultiplier = min(max(ratioObserved.squareRoot(), 0.9), 1.1)
+        guard
+            let isfMultiplier = self.insulinSensitivityMultiplier
+            else {
+                return
+        }
+        self.carbRatioMultiplier = min(max(isfMultiplier * (deltaGlucose + deltaGlucoseInsulin) / (ratioObserved * (deltaGlucose + isfMultiplier * deltaGlucoseInsulin)), 0.8), 1.2)
+        guard
+            let crMultiplier = self.carbRatioMultiplier
+            else {
+                return
+        }
+        self.carbSensitivityMultiplier = isfMultiplier / crMultiplier
     }
 }
