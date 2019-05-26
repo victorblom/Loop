@@ -996,13 +996,12 @@ extension LoopDataManager {
             activeCarbsStart = min(activeCarbsStart, carbStatus.startDate)
         }
         
-        // carbStatusesCompleted = carbStatuses.filterDateRange(startEstimation, endEstimation)
-        
+        // carbStatusesCompleted.filterDateRange(startEstimation, endEstimation)
         absorbedCarbs = []
-        for carbStatus in carbStatusesCompleted {
+        for carbStatus in carbStatusesCompleted.filterDateRange(startEstimation, endEstimation) {
             guard
-                carbStatus.endDate < activeCarbsStart
-                // carbStatus.endDate < endEstimation ?? Date()
+                // carbStatus.endDate < activeCarbsStart
+                let carbStatusEndTime = carbStatus.absorption?.observedDate.end, carbStatusEndTime < endEstimation ?? activeCarbsStart
                 else {
                     continue
             }
@@ -1793,7 +1792,8 @@ class AbsorbedCarbs {
         let ratioObserved = self.observedCarbs.doubleValue(for: .gram()) / self.enteredCarbs.doubleValue(for: .gram())
         let deltaGlucose = endGlucose - startGlucose
         let deltaGlucoseInsulin = startInsulin - endInsulin
-        let deltaGlucoseCorrection = min(max(1.0 - deltaGlucose / deltaGlucoseInsulin, 0.81), 1.21)
+        // ? let deltaGlucoseCorrection = min(max(1.0 - deltaGlucose / deltaGlucoseInsulin, 0.81), 1.21)
+        let deltaGlucoseCorrection = 1.0
         let isfCorrection = ratioObserved * deltaGlucoseCorrection
         self.insulinSensitivityMultiplier = min(max(isfCorrection.squareRoot(), 0.9), 1.1)
         guard
