@@ -217,6 +217,7 @@ final class LoopDataManager {
     private var absorbedCarbs: [AbsorbedCarbs] = []
     private var startEstimation: Date? = nil
     private var endEstimation: Date? = nil
+    private var noCarbs: [NoCarbs] = []
 
     /// The last date at which a loop completed, from prediction to dose (if dosing is enabled)
     var lastLoopCompleted: Date? {
@@ -988,7 +989,7 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         
-        carbStatusesCompleted = carbStatuses.filter { $0.absorption?.estimatedTimeRemaining ?? TimeInterval.minutes(1.0) == TimeInterval.minutes(0.0) }
+        carbStatusesCompleted = carbStatuses.filter { $0.absorption?.estimatedTimeRemaining ?? TimeInterval.minutes(1.0) == TimeInterval.minutes(0.0) }.filterDateRange(startEstimation, endEstimation)
         
         var activeCarbsStart = Date()
         let carbStatusesActive = carbStatuses.filter { $0.absorption?.estimatedTimeRemaining ?? TimeInterval.minutes(0.0) > TimeInterval.minutes(0.0) }
@@ -996,9 +997,8 @@ extension LoopDataManager {
             activeCarbsStart = min(activeCarbsStart, carbStatus.startDate)
         }
         
-        // carbStatusesCompleted.filterDateRange(startEstimation, endEstimation)
         absorbedCarbs = []
-        for carbStatus in carbStatusesCompleted.filterDateRange(startEstimation, endEstimation) {
+        for carbStatus in carbStatusesCompleted {
             guard
                 // carbStatus.endDate < activeCarbsStart
                 let carbStatusEndTime = carbStatus.absorption?.observedDate.end, carbStatusEndTime < endEstimation ?? activeCarbsStart
@@ -1027,6 +1027,53 @@ extension LoopDataManager {
         
         for absorbed in absorbedCarbs {
             absorbed.estimateParametersForEntry(glucose: historicalGlucose, insulin: historicalInsulinEffect, carbs: historicalCarbEffect, counteraction: insulinCounteractionEffects)
+        }
+
+        // dm61 construct no-carb segments
+        noCarbs = []
+        guard
+            let startNoCarbs = startEstimation,
+            let endNoCarbs = endEstimation else {
+                return
+        }
+        var startNoCarbsSegment = startNoCarbs
+        var endNoCarbsSegment = endNoCarbs
+        for absorbed in absorbedCarbs {
+            endNoCarbsSegment = absorbed.startDate
+            let insulinEffectNoCarbs = historicalInsulinEffect?.filterDateRange(startNoCarbsSegment.addingTimeInterval(.minutes(-5.0)), endNoCarbsSegment) ?? []
+            let glucoseNoCarbs = historicalGlucose.filter { (value) -> Bool in
+                if value.startDate < startNoCarbsSegment {
+                    return false
+                }
+                if value.startDate > endNoCarbsSegment {
+                    return false
+                }
+                return true
+            }
+            if glucoseNoCarbs.count > 5 {
+                let noCarbsSegment = NoCarbs(startDate: startNoCarbsSegment, endDate: endNoCarbsSegment, glucose: glucoseNoCarbs, insulinEffect: insulinEffectNoCarbs)
+                noCarbs.append(noCarbsSegment)
+            }
+            startNoCarbsSegment = absorbed.endDate
+        }
+        endNoCarbsSegment = endNoCarbs
+        let insulinEffectNoCarbs = historicalInsulinEffect?.filterDateRange(startNoCarbsSegment.addingTimeInterval(.minutes(-5.0)), endNoCarbsSegment) ?? []
+        let glucoseNoCarbs = historicalGlucose.filter { (value) -> Bool in
+            if value.startDate < startNoCarbsSegment {
+                return false
+            }
+            if value.startDate > endNoCarbsSegment {
+                return false
+            }
+            return true
+        }
+        if glucoseNoCarbs.count > 5 {
+            let noCarbsSegment = NoCarbs(startDate: startNoCarbsSegment, endDate: endNoCarbsSegment, glucose: glucoseNoCarbs, insulinEffect: insulinEffectNoCarbs)
+            noCarbs.append(noCarbsSegment)
+        }
+        
+        for noCarbsSegment in noCarbs {
+            noCarbsSegment.estimateParametersNoCarbs()
         }
         
     }
@@ -1649,6 +1696,20 @@ extension LoopDataManager {
                 }),
                 "]\n",
                 
+                "\n Estimates based on no-carb intervals: [",
+                manager.noCarbs.reduce(into: "", { (entries, entry) in
+                    entries.append("\n ---------- \n \(entry.startDate), \(entry.endDate),  \n *** ISF multiplier: \(String(describing: entry.insulinSensitivityMultiplier)), \n *** Bias effect: \(String(describing: entry.biasEffect)) \n")
+                }),
+                "]\n",
+                
+                // dm61 no-carb sequencies
+                "no-carb sequencies: [",
+                "* start, end, glucose-count, insulin-eff-count",
+                manager.noCarbs.reduce(into: "", { (entries, entry) in
+                    entries.append("* \(entry.startDate),  \(entry.endDate), \(String(describing: entry.glucose?.count)), \(String(describing: entry.insulinEffect?.count)), \n\(String(describing: entry.deltaGlucose)), \n\(String(describing: entry.deltaInsulinEffect)) \n")
+                }),
+                "]",
+
                 // dm61 statuses of carb entries
                 "\n carbStatuses: \(manager.carbStatuses) \n",
                 "\n carbStatusesForEstimation: \(manager.carbStatusesCompleted) \n",
@@ -1810,3 +1871,83 @@ class AbsorbedCarbs {
         self.carbSensitivityMultiplier = isfMultiplier / crMultiplier
     }
 }
+
+// dm61 parameter estimation wip
+class NoCarbs {
+    var startDate: Date
+    var endDate: Date
+    var glucose: [GlucoseValue]?
+    var insulinEffect: [GlucoseEffect]?
+    var deltaGlucose: [Double]?
+    var deltaInsulinEffect: [Double]?
+    var insulinSensitivityMultiplier: Double?
+    var biasEffect: Double?
+    var basalMultiplier: Double?
+    
+    init(startDate: Date, endDate: Date, glucose: [GlucoseValue], insulinEffect: [GlucoseEffect]) {
+        self.startDate = startDate
+        self.endDate = endDate
+        self.insulinEffect = insulinEffect
+        self.glucose = glucose
+    }
+    
+    func estimateParametersNoCarbs() {
+        self.calculateDeltas()
+        guard
+            let deltaInsulinEffect = self.deltaInsulinEffect,
+            let deltaGlucose = self.deltaGlucose else {
+                return
+        }
+        let noCarbsFit = linearRegression(deltaInsulinEffect, deltaGlucose)
+        self.biasEffect = noCarbsFit(0.0)
+        self.insulinSensitivityMultiplier = noCarbsFit(1.0) - noCarbsFit(0.0)
+    }
+    
+    private func calculateDeltas() {
+        
+        let unit = HKUnit.milligramsPerDeciliter
+        
+        guard
+            let firstGlucose = self.glucose?.first else {
+                return
+        }
+        self.deltaGlucose = []
+        self.deltaInsulinEffect = []
+        var previousGlucose = firstGlucose
+        for glucose in self.glucose?.dropFirst() ?? [] {
+            let deltaGlucose = glucose.quantity.doubleValue(for: unit) - previousGlucose.quantity.doubleValue(for: unit)
+            guard
+                let currentInsulinEffect = self.insulinEffect?.closestPriorToDate(glucose.startDate),
+                let previousInsulinEffect = self.insulinEffect?.closestPriorToDate(previousGlucose.startDate)
+                else {
+                    for effect in self.insulinEffect ?? [] {
+                        print("\(effect.startDate): \(effect.quantity.doubleValue(for: unit))")
+                    }
+                    continue
+            }
+            self.deltaGlucose?.append(deltaGlucose)
+            let deltaInsulinEffect = currentInsulinEffect.quantity.doubleValue(for: unit) - previousInsulinEffect.quantity.doubleValue(for: unit)
+            self.deltaInsulinEffect?.append(deltaInsulinEffect)
+            previousGlucose = glucose
+        }
+        
+    }
+    
+    private func average(_ input: [Double]) -> Double {
+        return input.reduce(0, +) / Double(input.count)
+    }
+    
+    private func multiply(_ a: [Double], _ b: [Double]) -> [Double] {
+        return zip(a,b).map(*)
+    }
+    
+    private func linearRegression(_ xs: [Double], _ ys: [Double]) -> (Double) -> Double {
+        let sum1 = average(multiply(ys, xs)) - average(xs) * average(ys)
+        let sum2 = average(multiply(xs, xs)) - pow(average(xs), 2)
+        let slope = sum1 / sum2
+        let intercept = average(ys) - slope * average(xs)
+        return { x in intercept + slope * x }
+    }
+    
+}
+
