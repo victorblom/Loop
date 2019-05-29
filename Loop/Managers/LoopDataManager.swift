@@ -1153,6 +1153,7 @@ extension LoopDataManager {
         if inputs.contains(.zeroTemp) {
             effects.append(self.zeroTempEffect)
         }
+        effects.append(self.zeroTempEffect)
 
         var prediction = LoopMath.predictGlucose(startingAt: glucose, momentum: momentum, effects: effects)
 
@@ -1698,7 +1699,7 @@ extension LoopDataManager {
                 
                 "\n Estimates based on no-carb intervals: [",
                 manager.noCarbs.reduce(into: "", { (entries, entry) in
-                    entries.append("\n ---------- \n \(entry.startDate), \(entry.endDate),  \n *** ISF multiplier: \(String(describing: entry.insulinSensitivityMultiplier)), \n *** Bias effect: \(String(describing: entry.biasEffect)) \n")
+                    entries.append("\n ---------- \n \(entry.startDate), \(entry.endDate), \(String(describing: entry.regressionStatistics.slope)), \(String(describing: entry.regressionStatistics.slopeStandardError)),\(String(describing: entry.regressionStatistics.intercept)), \(String(describing: entry.regressionStatistics.interceptStandardError)), \(String(describing: entry.regressionStatistics.rSquared)), \(String(describing: entry.regressionStatistics.nSamples)) \n *** ISF multiplier: \(String(describing: entry.insulinSensitivityMultiplier)), \n *** Bias effect: \(String(describing: entry.biasEffect)) \n")
                 }),
                 "]\n",
                 
@@ -1883,6 +1884,7 @@ class NoCarbs {
     var insulinSensitivityMultiplier: Double?
     var biasEffect: Double?
     var basalMultiplier: Double?
+    var regressionStatistics: RegressionStatistics = RegressionStatistics()
     
     init(startDate: Date, endDate: Date, glucose: [GlucoseValue], insulinEffect: [GlucoseEffect]) {
         self.startDate = startDate
@@ -1941,13 +1943,56 @@ class NoCarbs {
         return zip(a,b).map(*)
     }
     
+    private func dotProduct(_ a: [Double], _ b: [Double]) -> Double {
+        let c = multiply(a, b)
+        return c.reduce(0, +)
+    }
+    
+    private func scale(_ input: [Double], _ scale: Double) -> [Double] {
+        return input.map{ $0 * scale }
+    }
+    
+    private func addConstant(_ input: [Double], _ constant: Double) -> [Double] {
+        return input.map{ $0 + constant }
+    }
+    
+    private func add(_ a: [Double], _ b: [Double]) -> [Double] {
+        return zip(a,b).map(+)
+    }
+    
     private func linearRegression(_ xs: [Double], _ ys: [Double]) -> (Double) -> Double {
         let sum1 = average(multiply(ys, xs)) - average(xs) * average(ys)
         let sum2 = average(multiply(xs, xs)) - pow(average(xs), 2)
         let slope = sum1 / sum2
         let intercept = average(ys) - slope * average(xs)
+        let n = xs.count
+        let err = addConstant(add(ys, scale(xs, -slope)), -intercept)
+        let degreesOfFreedom = Double(n - 2)
+        let xAverage = average(xs)
+        let yAverage = average(ys)
+        let xDevs = addConstant(xs, -xAverage)
+        let slopeSE = ( dotProduct(err, err) / degreesOfFreedom / dotProduct(xDevs, xDevs)).squareRoot()
+        let interceptSE = slopeSE * (dotProduct(xs, xs) / Double(n)).squareRoot()
+        let rSquaredNumerator = pow(average(multiply(xs, ys)) - xAverage * yAverage, 2)
+        let rSquaredDenominatorX = average(multiply(xs, xs)) - pow(xAverage, 2)
+        let rSquaredDenominatorY = average(multiply(ys, ys)) - pow(yAverage, 2)
+        let rSquared = rSquaredNumerator / rSquaredDenominatorX / rSquaredDenominatorY
+        self.regressionStatistics.slope = slope
+        self.regressionStatistics.slopeStandardError = slopeSE
+        self.regressionStatistics.intercept = intercept
+        self.regressionStatistics.interceptStandardError = interceptSE
+        self.regressionStatistics.rSquared = rSquared
+        self.regressionStatistics.nSamples = n
         return { x in intercept + slope * x }
     }
     
 }
 
+class RegressionStatistics {
+    var slope: Double?
+    var intercept: Double?
+    var slopeStandardError: Double?
+    var interceptStandardError: Double?
+    var rSquared: Double?
+    var nSamples: Int?
+}
