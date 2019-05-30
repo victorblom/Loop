@@ -1150,9 +1150,9 @@ extension LoopDataManager {
             effects.append(self.retrospectiveGlucoseEffect)
         }
 
-        if inputs.contains(.zeroTemp) {
-            effects.append(self.zeroTempEffect)
-        }
+        //if inputs.contains(.zeroTemp) {
+        //    effects.append(self.zeroTempEffect)
+        //}
         effects.append(self.zeroTempEffect)
 
         var prediction = LoopMath.predictGlucose(startingAt: glucose, momentum: momentum, effects: effects)
@@ -1687,19 +1687,30 @@ extension LoopDataManager {
     func generateParameterEstimationReport(_ completion: @escaping (_ report: String) -> Void) {
         getParameterEstimationLoopState { (manager, state) in
             
+            let dateFormatter = DateFormatter()
+            dateFormatter.timeStyle = .medium
+            dateFormatter.dateStyle = .medium
+            let userCalendar = Calendar.current
+            var defaultDateComponents = DateComponents()
+            var defaultDate = Date()
+            defaultDateComponents.year = 1000
+            if let date = userCalendar.date(from: defaultDateComponents) {
+                defaultDate = date
+            }
+            
             let entries: [String] = [
-                "Estimation data start: \(String(describing: manager.startEstimation))",
-                "\n Estimation data end: \(String(describing: manager.endEstimation))",
+                "Estimation data start: \(dateFormatter.string(from: manager.startEstimation ?? defaultDate))",
+                "\n Estimation data end: \(dateFormatter.string(from: manager.endEstimation ?? defaultDate))",
                 "\n Estimates based on absorbed entries: [",
                 "* Carb entry (start, end, entered [g], observed [g]) followed by glucose effects and estimated parameter mutipliers:",
                 manager.absorbedCarbs.reduce(into: "", { (entries, entry) in
-                    entries.append("\n ---------- \n \(entry.startDate), \(entry.endDate),  \(entry.enteredCarbs.doubleValue(for: .gram())), \(entry.observedCarbs.doubleValue(for: .gram())), Glucose:  \(String(describing: entry.startGlucose?.startDate)), \(String(describing: entry.startGlucose?.quantity.doubleValue(for: .milligramsPerDeciliter))),  \(String(describing: entry.endGlucose?.startDate)), \(String(describing: entry.endGlucose?.quantity.doubleValue(for: .milligramsPerDeciliter))), Insulin effects: \(String(describing: entry.startInsulinEffect?.startDate)), \(String(describing: entry.startInsulinEffect?.quantity.doubleValue(for: .milligramsPerDeciliter))), \(String(describing: entry.endInsulinEffect?.startDate)), \(String(describing: entry.endInsulinEffect?.quantity.doubleValue(for: .milligramsPerDeciliter))), Carb effects: \(String(describing: entry.startCarbEffect?.startDate)), \(String(describing: entry.startCarbEffect?.quantity.doubleValue(for: .milligramsPerDeciliter))), \(String(describing: entry.endCarbEffect?.startDate)), \(String(describing: entry.endCarbEffect?.quantity.doubleValue(for: .milligramsPerDeciliter))), Counteraction effects: \(String(describing: entry.counteractionEffect?.doubleValue(for: .milligramsPerDeciliter))), \n *** ISF multiplier: \(String(describing: entry.insulinSensitivityMultiplier)), \n *** CR multiplier: \(String(describing: entry.carbRatioMultiplier)), \n *** CSF multiplier: \(String(describing: entry.carbSensitivityMultiplier)) \n")
+                    entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)),  \(entry.enteredCarbs.doubleValue(for: .gram())), \(entry.observedCarbs.doubleValue(for: .gram())), Glucose:  \(String(describing: entry.startGlucose?.startDate)), \(String(describing: entry.startGlucose?.quantity.doubleValue(for: .milligramsPerDeciliter))),  \(String(describing: entry.endGlucose?.startDate)), \(String(describing: entry.endGlucose?.quantity.doubleValue(for: .milligramsPerDeciliter))), Insulin effects: \(String(describing: entry.startInsulinEffect?.startDate)), \(String(describing: entry.startInsulinEffect?.quantity.doubleValue(for: .milligramsPerDeciliter))), \(String(describing: entry.endInsulinEffect?.startDate)), \(String(describing: entry.endInsulinEffect?.quantity.doubleValue(for: .milligramsPerDeciliter))), Carb effects: \(String(describing: entry.startCarbEffect?.startDate)), \(String(describing: entry.startCarbEffect?.quantity.doubleValue(for: .milligramsPerDeciliter))), \(String(describing: entry.endCarbEffect?.startDate)), \(String(describing: entry.endCarbEffect?.quantity.doubleValue(for: .milligramsPerDeciliter))), Counteraction effects: \(String(describing: entry.counteractionEffect?.doubleValue(for: .milligramsPerDeciliter))), \n *** ISF multiplier: \(String(describing: entry.insulinSensitivityMultiplier)), \n *** CR multiplier: \(String(describing: entry.carbRatioMultiplier)), \n *** CSF multiplier: \(String(describing: entry.carbSensitivityMultiplier)) \n")
                 }),
                 "]\n",
                 
                 "\n Estimates based on no-carb intervals: [",
                 manager.noCarbs.reduce(into: "", { (entries, entry) in
-                    entries.append("\n ---------- \n \(entry.startDate), \(entry.endDate), \(String(describing: entry.regressionStatistics.slope)), \(String(describing: entry.regressionStatistics.slopeStandardError)),\(String(describing: entry.regressionStatistics.intercept)), \(String(describing: entry.regressionStatistics.interceptStandardError)), \(String(describing: entry.regressionStatistics.rSquared)), \(String(describing: entry.regressionStatistics.nSamples)) \n *** ISF multiplier: \(String(describing: entry.insulinSensitivityMultiplier)), \n *** Bias effect: \(String(describing: entry.biasEffect)) \n")
+                    entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)), \(String(describing: entry.regressionStatistics.slope)), \(String(describing: entry.regressionStatistics.slopeStandardError)),\(String(describing: entry.regressionStatistics.intercept)), \(String(describing: entry.regressionStatistics.interceptStandardError)), \(String(describing: entry.regressionStatistics.rSquared)), \(String(describing: entry.regressionStatistics.nSamples)) \n *** ISF multiplier: \(String(describing: entry.insulinSensitivityMultiplier)), \n *** Bias effect: \(String(describing: entry.biasEffect)) \n")
                 }),
                 "]\n",
                 
@@ -1707,7 +1718,7 @@ extension LoopDataManager {
                 "no-carb sequencies: [",
                 "* start, end, glucose-count, insulin-eff-count",
                 manager.noCarbs.reduce(into: "", { (entries, entry) in
-                    entries.append("* \(entry.startDate),  \(entry.endDate), \(String(describing: entry.glucose?.count)), \(String(describing: entry.insulinEffect?.count)), \n\(String(describing: entry.deltaGlucose)), \n\(String(describing: entry.deltaInsulinEffect)) \n")
+                    entries.append("* \(dateFormatter.string(from: entry.startDate)),  \(dateFormatter.string(from: entry.endDate)), \(String(describing: entry.glucose?.count)), \(String(describing: entry.insulinEffect?.count)), \n\(String(describing: entry.deltaGlucose)), \n\(String(describing: entry.deltaInsulinEffect)) \n")
                 }),
                 "]",
 
@@ -1720,7 +1731,7 @@ extension LoopDataManager {
                 "historicalCarbEffect: [",
                 "* GlucoseEffect(start, mg/dL)",
                 (manager.historicalCarbEffect ?? []).reduce(into: "", { (entries, entry) in
-                    entries.append("* \(entry.startDate),  \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
+                    entries.append("* \(dateFormatter.string(from: entry.startDate)),  \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
                 }),
                 "]",
                 
@@ -1728,7 +1739,7 @@ extension LoopDataManager {
                 "historicalInsulinEffect: [",
                 "* GlucoseEffect(start, mg/dL)",
                 (manager.historicalInsulinEffect ?? []).reduce(into: "", { (entries, entry) in
-                    entries.append("* \(entry.startDate),  \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
+                    entries.append("* \(dateFormatter.string(from: entry.startDate)),  \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
                 }),
                 "]",
                 
@@ -1736,14 +1747,14 @@ extension LoopDataManager {
                 "historicalGlucose: [",
                 "* HistoricalGlucoseValues(start, mg/dL)",
                 manager.historicalGlucose.reduce(into: "", { (entries, entry) in
-                    entries.append("* \(entry.startDate), \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
+                    entries.append("* \(dateFormatter.string(from: entry.startDate)), \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
                 }),
                 "]",
                 
                 "retrospectiveGlucoseDiscrepancies: [",
                 "* GlucoseEffect(start, mg/dL)",
                 (manager.retrospectiveGlucoseDiscrepancies ?? []).reduce(into: "", { (entries, entry) in
-                    entries.append("* \(entry.startDate), \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
+                    entries.append("* \(dateFormatter.string(from: entry.startDate)), \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
                 }),
                 "]"
                 
