@@ -189,6 +189,10 @@ final class LoopDataManager {
     private var retrospectiveGlucoseDiscrepanciesSummed: [GlucoseChange]?
 
     private var zeroTempEffect: [GlucoseEffect] = []
+    
+    private var fractionalZeroTempEffect: [GlucoseEffect] = []
+    
+    private var remainingZeroTempEffect: [GlucoseEffect] = []
 
     fileprivate var predictedGlucose: [GlucoseValue]? {
         didSet {
@@ -1150,10 +1154,11 @@ extension LoopDataManager {
             effects.append(self.retrospectiveGlucoseEffect)
         }
 
-        //if inputs.contains(.zeroTemp) {
-        //    effects.append(self.zeroTempEffect)
-        //}
-        effects.append(self.zeroTempEffect)
+        // dm61 hyperLoop
+        effects.append(self.fractionalZeroTempEffect)
+        if inputs.contains(.zeroTemp) {
+            effects.append(self.remainingZeroTempEffect)
+        }
 
         var prediction = LoopMath.predictGlucose(startingAt: glucose, momentum: momentum, effects: effects)
 
@@ -1226,8 +1231,24 @@ extension LoopDataManager {
         let endZeroTempDose = startZeroTempDose.addingTimeInterval(insulinActionDuration)
         let zeroTemp = DoseEntry(type: .tempBasal, startDate: startZeroTempDose, endDate: endZeroTempDose, value: 0.0, unit: DoseUnit.unitsPerHour)
         zeroTempEffect = zeroTemp.tempBasalGlucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivity, basalRateSchedule: basalRateSchedule).filterDateRange(startZeroTempDose, endZeroTempDose)
+        
+        let hyperLoopAgressiveness = 0.75
+        fractionalZeroTempEffect = zeroTempEffectFraction(glucoseEffect: zeroTempEffect, fraction: hyperLoopAgressiveness)
+        remainingZeroTempEffect = zeroTempEffectFraction(glucoseEffect: zeroTempEffect, fraction: 1.0 - hyperLoopAgressiveness)
     }
 
+    /// Generates a fraction of glucose effect of zero temping
+    ///
+    private func zeroTempEffectFraction(glucoseEffect: [GlucoseEffect], fraction: Double) -> [GlucoseEffect] {
+        var fractionalEffect: [GlucoseEffect] = []
+        for effect in glucoseEffect {
+            let scaledEffect = GlucoseEffect(startDate: effect.startDate, quantity: HKQuantity(unit: .milligramsPerDeciliter, doubleValue: fraction * effect.quantity.doubleValue(for: .milligramsPerDeciliter)))
+            fractionalEffect.append(scaledEffect)
+        }
+        return fractionalEffect
+    }
+    
+    
     /// Runs the glucose prediction on the latest effect data.
     ///
     /// - Throws:
