@@ -188,7 +188,13 @@ private func insulinCorrectionUnits(fromValue: Double, toValue: Double, effected
 private func targetGlucoseValue(percentEffectDuration: Double, minValue: Double, maxValue: Double) -> Double {
     // The inflection point in time: before it we use minValue, after it we linearly blend from minValue to maxValue
     let useMinValueUntilPercent = 0.5
+    let use55UntilPercent = 0.2
+    
+    guard percentEffectDuration > use55UntilPercent else {
+        return 55.0 // dm61 allow dosing to 55 mg/dL during initial fraction of duration of insulin action. Use case: bolus allowed below suspend threshold if sufficient carbs taken
+    }
 
+    
     guard percentEffectDuration > useMinValueUntilPercent else {
         return minValue
     }
@@ -358,7 +364,8 @@ extension Collection where Element == GlucoseValue {
         let correction = self.insulinCorrection(
             to: correctionRange,
             at: date,
-            suspendThreshold: suspendThreshold ?? correctionRange.quantityRange(at: date).lowerBound,
+//            suspendThreshold: suspendThreshold ?? correctionRange.quantityRange(at: date).lowerBound,
+            suspendThreshold: correctionRange.quantityRange(at: date).lowerBound,
             sensitivity: sensitivity.quantity(at: date),
             model: model
         )
@@ -366,7 +373,7 @@ extension Collection where Element == GlucoseValue {
         let scheduledBasalRate = basalRates.value(at: date)
         let maxBasalRate = maxBasalRate
 
-        /* dm61 allo high temping when bg below min target
+        /* dm61 allow high temping when bg below min target
         // TODO: Allow `highBasalThreshold` to be a configurable setting
         if case .aboveRange(min: let min, correcting: _, minTarget: let highBasalThreshold, units: _)? = correction,
             min.quantity < highBasalThreshold
@@ -415,7 +422,8 @@ extension Collection where Element == GlucoseValue {
         guard let correction = self.insulinCorrection(
             to: correctionRange,
             at: date,
-            suspendThreshold: suspendThreshold ?? correctionRange.quantityRange(at: date).lowerBound,
+//            suspendThreshold: suspendThreshold ?? correctionRange.quantityRange(at: date).lowerBound,
+            suspendThreshold: correctionRange.quantityRange(at: date).lowerBound,
             sensitivity: sensitivity.quantity(at: date),
             model: model
         ) else {
