@@ -237,7 +237,7 @@ extension Collection where Element == GlucoseValue {
 
         let unit = correctionRange.unit
         let sensitivityValue = sensitivity.doubleValue(for: unit)
-        let suspendThresholdValue = suspendThreshold.doubleValue(for: unit)
+        //let suspendThresholdValue = suspendThreshold.doubleValue(for: unit)
 
         // For each prediction above target, determine the amount of insulin necessary to correct glucose based on the modeled effectiveness of the insulin at that time
         for prediction in self {
@@ -262,7 +262,8 @@ extension Collection where Element == GlucoseValue {
             // Compute the target value as a function of time since the dose started
             let targetValue = targetGlucoseValue(
                 percentEffectDuration: time / model.effectDuration,
-                minValue: suspendThresholdValue, 
+//                minValue: suspendThresholdValue,
+                minValue: correctionRange.minQuantity(at: prediction.startDate).doubleValue(for: unit),
                 maxValue: correctionRange.quantityRange(at: prediction.startDate).averageValue(for: unit)
             )
 
@@ -364,8 +365,7 @@ extension Collection where Element == GlucoseValue {
         let correction = self.insulinCorrection(
             to: correctionRange,
             at: date,
-//            suspendThreshold: suspendThreshold ?? correctionRange.quantityRange(at: date).lowerBound,
-            suspendThreshold: correctionRange.quantityRange(at: date).lowerBound,
+            suspendThreshold: suspendThreshold ?? correctionRange.quantityRange(at: date).lowerBound,
             sensitivity: sensitivity.quantity(at: date),
             model: model
         )
@@ -422,8 +422,7 @@ extension Collection where Element == GlucoseValue {
         guard let correction = self.insulinCorrection(
             to: correctionRange,
             at: date,
-//            suspendThreshold: suspendThreshold ?? correctionRange.quantityRange(at: date).lowerBound,
-            suspendThreshold: correctionRange.quantityRange(at: date).lowerBound,
+            suspendThreshold: suspendThreshold ?? correctionRange.quantityRange(at: date).lowerBound,
             sensitivity: sensitivity.quantity(at: date),
             model: model
         ) else {
