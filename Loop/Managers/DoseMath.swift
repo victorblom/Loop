@@ -246,9 +246,11 @@ extension Collection where Element == GlucoseValue {
             }
 
             // If any predicted value is below the suspend threshold, return immediately
+            /* dm61 remove suspend limit
             guard prediction.quantity >= suspendThreshold else {
                 return .suspend(min: prediction)
             }
+            */
 
             // Update range statistics
             if minGlucose == nil || prediction.quantity < minGlucose!.quantity {
@@ -294,9 +296,21 @@ extension Collection where Element == GlucoseValue {
         }
 
         // Choose either the minimum glucose or eventual glocse as the correction delta
-        let minGlucoseTargets = correctionRange.quantityRange(at: min.startDate)
+        //dm61 let minGlucoseTargets = correctionRange.quantityRange(at: min.startDate)
         let eventualGlucoseTargets = correctionRange.quantityRange(at: eventual.startDate)
+        
+        if let minCorrectionUnits = minCorrectionUnits, let correctingGlucose = correctingGlucose {
+            return .aboveRange(
+                min: min,
+                correcting: correctingGlucose,
+                minTarget: eventualGlucoseTargets.lowerBound,
+                units: minCorrectionUnits
+            )
+        } else {
+            return nil
+        }
 
+        /* dm61 remove special cases
         // Treat the mininum glucose when both are below range
         if min.quantity < minGlucoseTargets.lowerBound &&
             eventual.quantity < eventualGlucoseTargets.lowerBound
@@ -330,6 +344,7 @@ extension Collection where Element == GlucoseValue {
         } else {
             return .inRange
         }
+        */
     }
 
     /// Recommends a temporary basal rate to conform a glucose prediction timeline to a correction range

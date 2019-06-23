@@ -837,7 +837,7 @@ extension LoopDataManager {
         
         let retrospectiveStart = lastGlucoseDate.addingTimeInterval(-settings.retrospectiveCorrectionIntegrationInterval)
         
-        let earliestEffectDate = Date(timeIntervalSinceNow: .hours(-24))
+        let earliestEffectDate = Date(timeIntervalSinceNow: .hours(-48))
         let nextEffectDate = insulinCounteractionEffects.last?.endDate ?? earliestEffectDate
         
         if glucoseMomentumEffect == nil {
@@ -898,7 +898,7 @@ extension LoopDataManager {
         
         // dm61 collect data for parameter estimation
         // dm61 collect blood glucose values for parameter estimation over past 24 hours
-        let startHistoricalGlucose = lastGlucoseDate.addingTimeInterval(.hours(-24.0))
+        let startHistoricalGlucose = lastGlucoseDate.addingTimeInterval(.hours(-48.0))
         updateGroup.enter()
         glucoseStore.getCachedGlucoseSamples(start: startHistoricalGlucose) { (values) in
             self.historicalGlucose = values
@@ -909,7 +909,7 @@ extension LoopDataManager {
         
         // dm61 collect insulin effect time series for parameter estimation
         // effects due to insulin over past 24 hours
-        let startHistoricalInsulinEffect = lastGlucoseDate.addingTimeInterval(.hours(-24.0))
+        let startHistoricalInsulinEffect = lastGlucoseDate.addingTimeInterval(.hours(-48.0))
         updateGroup.enter()
         doseStore.getGlucoseEffects(start: startHistoricalInsulinEffect) { (result) -> Void in
             switch result {
@@ -927,7 +927,7 @@ extension LoopDataManager {
         
         // dm61 collect carb effect time series for parameter estimation
         // effects due to food entries over past 24 hours
-        let startHistoricalCarbEffect = lastGlucoseDate.addingTimeInterval(.hours(-24.0))
+        let startHistoricalCarbEffect = lastGlucoseDate.addingTimeInterval(.hours(-48.0))
         updateGroup.enter()
         carbStore.getGlucoseEffects(
             start: startHistoricalCarbEffect,
@@ -1232,7 +1232,7 @@ extension LoopDataManager {
         let zeroTemp = DoseEntry(type: .tempBasal, startDate: startZeroTempDose, endDate: endZeroTempDose, value: 0.0, unit: DoseUnit.unitsPerHour)
         zeroTempEffect = zeroTemp.tempBasalGlucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivity, basalRateSchedule: basalRateSchedule).filterDateRange(startZeroTempDose, endZeroTempDose)
         
-        let hyperLoopAgressiveness = 0.75
+        let hyperLoopAgressiveness = 0.5
         fractionalZeroTempEffect = zeroTempEffectFraction(glucoseEffect: zeroTempEffect, fraction: hyperLoopAgressiveness)
         remainingZeroTempEffect = zeroTempEffectFraction(glucoseEffect: zeroTempEffect, fraction: 1.0 - hyperLoopAgressiveness)
     }
