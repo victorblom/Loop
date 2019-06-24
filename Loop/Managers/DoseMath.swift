@@ -272,14 +272,24 @@ extension Collection where Element == GlucoseValue {
             // Compute the dose required to bring this prediction to target:
             // dose = (Glucose Δ) / (% effect × sensitivity)
 
-            let percentEffected = 1 - model.percentEffectRemaining(at: time)
+            //dm61 let percentEffected = 1 - model.percentEffectRemaining(at: time)
+            let percentEffected = Swift.max(.ulpOfOne, 1 - model.percentEffectRemaining(at: time))
             let effectedSensitivity = percentEffected * sensitivityValue
+            /* dm61 removed correctionUnits > 0
             guard let correctionUnits = insulinCorrectionUnits(
                 fromValue: predictedGlucoseValue,
                 toValue: targetValue,
                 effectedSensitivity: effectedSensitivity
             ), correctionUnits > 0 else {
                 continue
+            }
+            */
+            guard let correctionUnits = insulinCorrectionUnits(
+                fromValue: predictedGlucoseValue,
+                toValue: targetValue,
+                effectedSensitivity: effectedSensitivity
+                ) else {
+                    continue
             }
 
             // Update the correction only if we've found a new minimum
