@@ -765,7 +765,7 @@ extension LoopDataManager {
                 logger.error(error)
             }
         }
-
+        
         do {
             try updateZeroTempEffect()
         } catch let error {
@@ -1155,6 +1155,18 @@ extension LoopDataManager {
         }
 
         // dm61 hyperLoop
+        var glucoseValue = glucose.quantity.doubleValue(for: .milligramsPerDeciliter)
+        if let eventualGlucoseValue = LoopMath.predictGlucose(startingAt: glucose, momentum: momentum, effects: effects).last?.quantity.doubleValue(for: .milligramsPerDeciliter) {
+            glucoseValue = max( glucoseValue, eventualGlucoseValue )
+        }
+        let maximumHyperLoopAgressiveness = 0.75
+        let hyperLoopGlucoseThreshold = 100.0
+        let hyperLoopGlucoseWindow = 40.0
+        let glucoseError = max(0.0, min(hyperLoopGlucoseWindow, glucoseValue - hyperLoopGlucoseThreshold))
+        let hyperLoopAgressiveness = maximumHyperLoopAgressiveness * glucoseError / hyperLoopGlucoseWindow
+        fractionalZeroTempEffect = effectFraction(glucoseEffect: zeroTempEffect, fraction: hyperLoopAgressiveness)
+
+        // dm61 hyperLoop
         if inputs.contains(.zeroTemp) {
             effects.append(self.zeroTempEffect)
         } else {
@@ -1233,11 +1245,18 @@ extension LoopDataManager {
         let zeroTemp = DoseEntry(type: .tempBasal, startDate: startZeroTempDose, endDate: endZeroTempDose, value: 0.0, unit: DoseUnit.unitsPerHour)
         zeroTempEffect = zeroTemp.tempBasalGlucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivity, basalRateSchedule: basalRateSchedule).filterDateRange(startZeroTempDose, endZeroTempDose)
         
-        let hyperLoopAgressiveness = 0.5
-        let hyperLoopEffectDuration = 0.65 * insulinActionDuration
+        /* dm61 hyperLoop moved this to prediction update
+        var diaFraction = 0.5
+        if let currentGlucoseValue = glucoseStore.latestGlucose?.quantity.doubleValue(for: .milligramsPerDeciliter),
+            let targetGlucoseValue = settings.glucoseTargetRangeSchedule?.quantityRange(at: Date()).averageValue(for: .milligramsPerDeciliter) {
+            let glucoseError = max(50.0, currentGlucoseValue - targetGlucoseValue)
+            diaFraction = min(1.0, glucoseError / 100.0)
+        }
+        let hyperLoopAgressiveness = 0.75
+        let hyperLoopEffectDuration = diaFraction * insulinActionDuration
         let endHyperLoopEffect = startZeroTempDose.addingTimeInterval(hyperLoopEffectDuration)
         fractionalZeroTempEffect = effectFraction(glucoseEffect: zeroTempEffect, fraction: hyperLoopAgressiveness).filterDateRange(startZeroTempDose, endHyperLoopEffect)
-        //dm61-don-not-need: remainingZeroTempEffect = zeroTempEffectFraction(glucoseEffect: zeroTempEffect, fraction: 1.0 - hyperLoopAgressiveness).filterDateRange(startZeroTempDose, endHyperLoopEffect)
+        */
     }
 
     /// Generates a fraction of glucose effect of zero temping
