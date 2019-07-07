@@ -119,8 +119,12 @@ final class CarbAbsorptionViewController: ChartsTableViewController, Identifiabl
         }
         charts.startDate = chartStartDate
 
-        let midnight = Calendar.current.startOfDay(for: Date())
-        let listStart = min(midnight, chartStartDate, Date(timeIntervalSinceNow: -deviceManager.loopManager.carbStore.maximumAbsorptionTimeInterval))
+        // let midnight = Calendar.current.startOfDay(for: Date())
+        // let listStart = min(midnight, chartStartDate, Date(timeIntervalSinceNow: -deviceManager.loopManager.carbStore.maximumAbsorptionTimeInterval))
+        
+        // dm61 try Bharat's fix
+        let visiblePeriod = Calendar.current.date(byAdding: .hour, value: -24, to: Date()) ?? Calendar.current.startOfDay(for: Date())
+        let listStart = min(visiblePeriod, chartStartDate)
 
         let reloadGroup = DispatchGroup()
         let shouldUpdateGlucose = currentContext.contains(.glucose)
@@ -175,7 +179,9 @@ final class CarbAbsorptionViewController: ChartsTableViewController, Identifiabl
 
         if shouldUpdateCarbs {
             reloadGroup.enter()
-            deviceManager.loopManager.carbStore.getTotalCarbs(since: midnight) { (result) in
+            //dm61 try Bharat's fix
+            // deviceManager.loopManager.carbStore.getTotalCarbs(since: midnight) {
+            self.deviceManager.loopManager.carbStore.getTotalCarbs(since: visiblePeriod) { (result) in
                 switch result {
                 case .success(let total):
                     carbTotal = total
