@@ -1904,26 +1904,39 @@ class AbsorbedCarbs {
             return
         }
         
-        //dm61 May 25 notes: isf and cr multipliers calculated so that observed carbs = entered carbs while limiting isf multiplier
-        let ratioObserved = self.observedCarbs.doubleValue(for: .gram()) / self.enteredCarbs.doubleValue(for: .gram())
+        //dm61 July 7 notes: redo cr, csf, isf multipliers
+        // notes in test_new_meal_estimate.m
+        
+        // sqrt models the assumption that observed/entered is a product of mis-estimated carbs factor and a mimatched parameters factor
+        let observedOverEntered = (self.observedCarbs.doubleValue(for: .gram()) / self.enteredCarbs.doubleValue(for: .gram())).squareRoot()
         let deltaGlucose = endGlucose - startGlucose
         let deltaGlucoseInsulin = startInsulin - endInsulin
-        // ? let deltaGlucoseCorrection = min(max(1.0 - deltaGlucose / deltaGlucoseInsulin, 0.81), 1.21)
-        let deltaGlucoseCorrection = 1.0
-        let isfCorrection = ratioObserved * deltaGlucoseCorrection
-        self.insulinSensitivityMultiplier = min(max(isfCorrection.squareRoot(), 0.9), 1.1)
+        
+        self.insulinSensitivityMultiplier = 1.0
+        self.carbRatioMultiplier = 1.0
+        self.carbSensitivityMultiplier = 1.0
+        
+        let deltaGlucoseCounteraction = deltaGlucose + deltaGlucoseInsulin
         guard
-            let isfMultiplier = self.insulinSensitivityMultiplier
-            else {
-                return
+            deltaGlucoseCounteraction != 0.0,
+            observedOverEntered != 0.0
+        else {
+            return
         }
-        self.carbRatioMultiplier = min(max(isfMultiplier * (deltaGlucose + deltaGlucoseInsulin) / (ratioObserved * (deltaGlucose + isfMultiplier * deltaGlucoseInsulin)), 0.8), 1.2)
-        guard
-            let crMultiplier = self.carbRatioMultiplier
-            else {
-                return
-        }
-        self.carbSensitivityMultiplier = isfMultiplier / crMultiplier
+        
+        let csfWeight = deltaGlucose / deltaGlucoseCounteraction // a
+        let denominator = pow(csfWeight, 2.0) + pow((1.0 - csfWeight), 2.0)
+        let enteredOverObserved = 1.0 / observedOverEntered // b
+        // y = b*(1-a)/den + a*(2*a-1)/den = crMultiplier;
+        let crMultiplier = (enteredOverObserved * (1.0 - csfWeight) + csfWeight * (2.0 * csfWeight - 1.0)) / denominator
+        // x = b*a/den + (1-a)*(1-2*a)/den = 1/csfMultiplier
+        let csfMultiplier = denominator / (csfWeight * enteredOverObserved + (1.0 - csfWeight) * (1.0 - 2.0 * csfWeight))
+        
+        self.carbRatioMultiplier = crMultiplier
+        self.carbSensitivityMultiplier = csfMultiplier
+        self.insulinSensitivityMultiplier = csfMultiplier * crMultiplier
+        
+        return
     }
 }
 
