@@ -1847,6 +1847,18 @@ extension DoseStore {
     }
 }
 
+// dm61 for parameter estimation
+/// projection of point (1, 1) to line a * x + b * y = c
+fileprivate func projectionToLine(a: Double, b: Double, c: Double) -> (Double, Double) {
+    let dotProduct = pow(a, 2.0) + pow(b, 2.0)
+    if dotProduct == 0.0 {
+        return(1.0, 1.0)
+    } else {
+        let x = (pow(b, 2.0) - a * b + a * c) / dotProduct
+        let y = (pow(a, 2.0) - a * b + b * c) / dotProduct
+        return(x, y)
+    }
+}
 
 // dm61 parameter estimation wip
 class AbsorbedCarbs {
