@@ -1054,8 +1054,9 @@ extension LoopDataManager {
                 }
                 return true
             }
+            let basalEffect = updateBasalEffect(startDate: startNoCarbsSegment, endDate: endNoCarbsSegment)
             if glucoseNoCarbs.count > 5 {
-                let noCarbsSegment = NoCarbs(startDate: startNoCarbsSegment, endDate: endNoCarbsSegment, glucose: glucoseNoCarbs, insulinEffect: insulinEffectNoCarbs)
+                let noCarbsSegment = NoCarbs(startDate: startNoCarbsSegment, endDate: endNoCarbsSegment, glucose: glucoseNoCarbs, insulinEffect: insulinEffectNoCarbs, basalEffect: basalEffect)
                 noCarbs.append(noCarbsSegment)
             }
             startNoCarbsSegment = absorbed.endDate
@@ -1071,8 +1072,9 @@ extension LoopDataManager {
             }
             return true
         }
+        let basalEffect = updateBasalEffect(startDate: startNoCarbsSegment, endDate: endNoCarbsSegment)
         if glucoseNoCarbs.count > 5 {
-            let noCarbsSegment = NoCarbs(startDate: startNoCarbsSegment, endDate: endNoCarbsSegment, glucose: glucoseNoCarbs, insulinEffect: insulinEffectNoCarbs)
+            let noCarbsSegment = NoCarbs(startDate: startNoCarbsSegment, endDate: endNoCarbsSegment, glucose: glucoseNoCarbs, insulinEffect: insulinEffectNoCarbs, basalEffect: basalEffect)
             noCarbs.append(noCarbsSegment)
         }
         
@@ -1258,6 +1260,33 @@ extension LoopDataManager {
         fractionalZeroTempEffect = effectFraction(glucoseEffect: zeroTempEffect, fraction: hyperLoopAgressiveness).filterDateRange(startZeroTempDose, endHyperLoopEffect)
         */
     }
+    
+    // dm61 need this for the parameter estimator
+    /// Generates a glucose prediction effect of zero temping over a period of time
+    ///
+    private func updateBasalEffect(startDate: Date, endDate: Date) -> [GlucoseEffect] {
+        
+        var basalEffect: [GlucoseEffect] = []
+        // Get settings, otherwise clear effect and throw error
+        guard
+            let insulinModel = insulinModelSettings?.model,
+            let insulinSensitivity = insulinSensitivitySchedule,
+            let basalRateSchedule = basalRateSchedule
+            else {
+                return(basalEffect)
+        }
+        
+        let insulinActionDuration = insulinModel.effectDuration
+
+        // use the new LoopKit method tempBasalGlucoseEffects to generate zero temp effects
+        let startZeroTempDose = startDate.addingTimeInterval(-insulinActionDuration)
+        let endZeroTempDose = endDate
+        let zeroTemp = DoseEntry(type: .tempBasal, startDate: startZeroTempDose, endDate: endZeroTempDose, value: 0.0, unit: DoseUnit.unitsPerHour)
+        basalEffect = zeroTemp.tempBasalGlucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivity, basalRateSchedule: basalRateSchedule).filterDateRange(startDate, endDate)
+        return(basalEffect)
+    }
+
+    
 
     /// Generates a fraction of glucose effect of zero temping
     ///
@@ -1751,11 +1780,27 @@ extension LoopDataManager {
                 }),
                 "]\n",
                 
+                /* dm61 take regression approach out for now
                 "\n Estimates based on no-carb intervals: [",
                 manager.noCarbs.reduce(into: "", { (entries, entry) in
                     entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)), \(String(describing: entry.regressionStatistics.slope)), \(String(describing: entry.regressionStatistics.slopeStandardError)),\(String(describing: entry.regressionStatistics.intercept)), \(String(describing: entry.regressionStatistics.interceptStandardError)), \(String(describing: entry.regressionStatistics.rSquared)), \(String(describing: entry.regressionStatistics.nSamples)) \n *** ISF multiplier: \(String(describing: entry.insulinSensitivityMultiplier)), \n *** Bias effect: \(String(describing: entry.biasEffect)) \n")
                 }),
+                "]\n", */
+                
+                "\n Estimates based on no-carb intervals: [",
+                manager.noCarbs.reduce(into: "", { (entries, entry) in
+                    entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)),  \n *** ISF multiplier: \(String(describing: entry.insulinSensitivityMultiplier)), \n *** Basal multiplier: \(String(describing: entry.basalMultiplier)) \n Start glucose: \(String(describing: entry.startGlucose)) \n End glucose: \(String(describing: entry.endGlucose)) \n Start insulin effect: \(String(describing: entry.startGlucoseInsulin)) \n End insulin effect: \(String(describing: entry.endGlucoseInsulin)) \n Start basal effect: \(String(describing: entry.startGlucoseBasal)) \n End basal effect: \(String(describing: entry.endGlucoseBasal)) \n")
+                }),
                 "]\n",
+                
+                /* dm61 temporarily show only data relevant for the new estimator
+                // dm61 no-carb sequencies
+                "no-carb sequencies: [",
+                "* start, end, glucose-count, insulin-eff-count",
+                manager.noCarbs.reduce(into: "", { (entries, entry) in
+                    entries.append("* \(dateFormatter.string(from: entry.startDate)),  \(dateFormatter.string(from: entry.endDate)), \(String(describing: entry.glucose?.count)), \(String(describing: entry.insulinEffect?.count)), \n\(String(describing: entry.deltaGlucose)), \n\(String(describing: entry.deltaInsulinEffect)) \n")
+                }),
+                "]", */
                 
                 // dm61 no-carb sequencies
                 "no-carb sequencies: [",
@@ -1877,6 +1922,9 @@ class AbsorbedCarbs {
     var carbSensitivityMultiplier: Double?
     var carbRatioMultiplier: Double?
     
+    let unit = HKUnit.milligramsPerDeciliter
+    let velocityUnit = HKUnit.milligramsPerDeciliter.unitDivided(by: .minute())
+    
     init(startDate: Date, endDate: Date, enteredCarbs: HKQuantity, observedCarbs: HKQuantity) {
         self.startDate = startDate
         self.endDate = endDate
@@ -1885,9 +1933,6 @@ class AbsorbedCarbs {
     }
     
     func estimateParametersForEntry(glucose: [GlucoseValue]?, insulin: [GlucoseEffect]?, carbs: [GlucoseEffect]?, counteraction: [GlucoseEffectVelocity]?) {
-        
-        let unit = HKUnit.milligramsPerDeciliter
-        let velocityUnit = HKUnit.milligramsPerDeciliter.unitDivided(by: .minute())
         
         self.startGlucose = glucose?.first(where: { $0.startDate >= self.startDate })
         self.endGlucose = glucose?.first(where: { $0.startDate >= self.endDate })
@@ -1916,11 +1961,11 @@ class AbsorbedCarbs {
             return
         }
         
-        //dm61 July 7 notes: redo cr, csf, isf multipliers
-        // notes in test_new_meal_estimate.m
+        //dm61 July 7-12 notes: redo cr, csf, isf multipliers
+        // notes in ParameterEstimationNotes.pptx
         
         // sqrt models the assumption that observed/entered is a product of mis-estimated carbs factor and a mimatched parameters factor
-        let observedOverEntered = (self.observedCarbs.doubleValue(for: .gram()) / self.enteredCarbs.doubleValue(for: .gram())).squareRoot()
+        let observedOverActual = (self.observedCarbs.doubleValue(for: .gram()) / self.enteredCarbs.doubleValue(for: .gram()))
         let deltaGlucose = endGlucose - startGlucose
         let deltaGlucoseInsulin = startInsulin - endInsulin
         
@@ -1931,22 +1976,20 @@ class AbsorbedCarbs {
         let deltaGlucoseCounteraction = deltaGlucose + deltaGlucoseInsulin
         guard
             deltaGlucoseCounteraction != 0.0,
-            observedOverEntered != 0.0
+            observedOverActual != 0.0
         else {
             return
         }
         
+        let actualOverObservedFraction = (1.0 / observedOverActual).squareRoot() // c
         let csfWeight = deltaGlucose / deltaGlucoseCounteraction // a
-        let denominator = pow(csfWeight, 2.0) + pow((1.0 - csfWeight), 2.0)
-        let enteredOverObserved = 1.0 / observedOverEntered // b
-        // y = b*(1-a)/den + a*(2*a-1)/den = crMultiplier;
-        let crMultiplier = (enteredOverObserved * (1.0 - csfWeight) + csfWeight * (2.0 * csfWeight - 1.0)) / denominator
-        // x = b*a/den + (1-a)*(1-2*a)/den = 1/csfMultiplier
-        let csfMultiplier = denominator / (csfWeight * enteredOverObserved + (1.0 - csfWeight) * (1.0 - 2.0 * csfWeight))
+        let crWeight = 1.0 - csfWeight // b
+        
+        let (csfMultiplierInverse, crMultiplier) = projectionToLine(a: csfWeight, b: crWeight, c: actualOverObservedFraction)
         
         self.carbRatioMultiplier = crMultiplier
-        self.carbSensitivityMultiplier = csfMultiplier
-        self.insulinSensitivityMultiplier = csfMultiplier * crMultiplier
+        self.carbSensitivityMultiplier = 1.0 / csfMultiplierInverse
+        self.insulinSensitivityMultiplier = crMultiplier / csfMultiplierInverse
         
         return
     }
@@ -1958,21 +2001,32 @@ class NoCarbs {
     var endDate: Date
     var glucose: [GlucoseValue]?
     var insulinEffect: [GlucoseEffect]?
+    var basalEffect: [GlucoseEffect]?
     var deltaGlucose: [Double]?
     var deltaInsulinEffect: [Double]?
     var insulinSensitivityMultiplier: Double?
     var biasEffect: Double?
     var basalMultiplier: Double?
     var regressionStatistics: RegressionStatistics = RegressionStatistics()
+    var startGlucose: Double?
+    var endGlucose: Double?
+    var startGlucoseInsulin: Double?
+    var endGlucoseInsulin: Double?
+    var startGlucoseBasal: Double?
+    var endGlucoseBasal: Double?
     
-    init(startDate: Date, endDate: Date, glucose: [GlucoseValue], insulinEffect: [GlucoseEffect]) {
+    let unit = HKUnit.milligramsPerDeciliter
+    let velocityUnit = HKUnit.milligramsPerDeciliter.unitDivided(by: .minute())
+    
+    init(startDate: Date, endDate: Date, glucose: [GlucoseValue], insulinEffect: [GlucoseEffect], basalEffect: [GlucoseEffect]) {
         self.startDate = startDate
         self.endDate = endDate
         self.insulinEffect = insulinEffect
         self.glucose = glucose
+        self.basalEffect = basalEffect
     }
     
-    func estimateParametersNoCarbs() {
+    func estimateParametersNoCarbsRegression() {
         self.calculateDeltas()
         guard
             let deltaInsulinEffect = self.deltaInsulinEffect,
@@ -1982,6 +2036,36 @@ class NoCarbs {
         let noCarbsFit = linearRegression(deltaInsulinEffect, deltaGlucose)
         self.biasEffect = noCarbsFit(0.0)
         self.insulinSensitivityMultiplier = noCarbsFit(1.0) - noCarbsFit(0.0)
+    }
+    
+    func estimateParametersNoCarbs() {
+        guard
+            let startGlucose = self.glucose?.first?.quantity.doubleValue(for: unit),
+            let endGlucose = self.glucose?.last?.quantity.doubleValue(for: unit),
+            let startInsulin = self.insulinEffect?.first?.quantity.doubleValue(for: unit),
+            let endInsulin = self.insulinEffect?.last?.quantity.doubleValue(for: unit),
+            let startBasal = self.basalEffect?.first?.quantity.doubleValue(for: unit),
+            let endBasal = self.basalEffect?.last?.quantity.doubleValue(for: unit)
+            else {
+                return
+        }
+        
+        let deltaGlucose = endGlucose - startGlucose
+        let deltaGlucoseInsulin = startInsulin - endInsulin
+        let deltaGlucoseBasal = endBasal - startBasal
+        
+        let (basalMultiplier, insulinSensitivityMultiplierInverse) = projectionToLine(a: deltaGlucoseBasal, b: -deltaGlucose, c: deltaGlucoseBasal + deltaGlucoseInsulin)
+        let insulinSensitivityMultiplier = 1.0 / insulinSensitivityMultiplierInverse
+        
+        self.basalMultiplier = basalMultiplier
+        self.insulinSensitivityMultiplier = insulinSensitivityMultiplier
+        
+        self.startGlucose = startGlucose
+        self.endGlucose = endGlucose
+        self.startGlucoseInsulin = startInsulin
+        self.endGlucoseInsulin = endInsulin
+        self.startGlucoseBasal = startBasal
+        self.endGlucoseBasal = endBasal
     }
     
     private func calculateDeltas() {
