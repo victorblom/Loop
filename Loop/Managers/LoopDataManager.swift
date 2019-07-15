@@ -2026,18 +2026,6 @@ class NoCarbs {
         self.basalEffect = basalEffect
     }
     
-    func estimateParametersNoCarbsRegression() {
-        self.calculateDeltas()
-        guard
-            let deltaInsulinEffect = self.deltaInsulinEffect,
-            let deltaGlucose = self.deltaGlucose else {
-                return
-        }
-        let noCarbsFit = linearRegression(deltaInsulinEffect, deltaGlucose)
-        self.biasEffect = noCarbsFit(0.0)
-        self.insulinSensitivityMultiplier = noCarbsFit(1.0) - noCarbsFit(0.0)
-    }
-    
     func estimateParametersNoCarbs() {
         guard
             let startGlucose = self.glucose?.first?.quantity.doubleValue(for: unit),
@@ -2066,6 +2054,18 @@ class NoCarbs {
         self.endGlucoseInsulin = endInsulin
         self.startGlucoseBasal = startBasal
         self.endGlucoseBasal = endBasal
+    }
+    
+    func estimateParametersNoCarbsRegression() {
+        self.calculateDeltas()
+        guard
+            let deltaInsulinEffect = self.deltaInsulinEffect,
+            let deltaGlucose = self.deltaGlucose else {
+                return
+        }
+        let noCarbsFit = linearRegression(deltaInsulinEffect, deltaGlucose)
+        self.biasEffect = noCarbsFit(0.0)
+        self.insulinSensitivityMultiplier = noCarbsFit(1.0) - noCarbsFit(0.0)
     }
     
     private func calculateDeltas() {
