@@ -222,6 +222,7 @@ final class LoopDataManager {
     private var startEstimation: Date? = nil
     private var endEstimation: Date? = nil
     private var noCarbs: [NoCarbs] = []
+    private var parameterEstimates: [ParameterEstimation] = []
 
     /// The last date at which a loop completed, from prediction to dose (if dosing is enabled)
     var lastLoopCompleted: Date? {
@@ -837,7 +838,7 @@ extension LoopDataManager {
         
         let retrospectiveStart = lastGlucoseDate.addingTimeInterval(-settings.retrospectiveCorrectionIntegrationInterval)
         
-        let earliestEffectDate = Date(timeIntervalSinceNow: .hours(-48))
+        let earliestEffectDate = Date(timeIntervalSinceNow: .hours(-32))
         let nextEffectDate = insulinCounteractionEffects.last?.endDate ?? earliestEffectDate
         
         if glucoseMomentumEffect == nil {
@@ -898,7 +899,7 @@ extension LoopDataManager {
         
         // dm61 collect data for parameter estimation
         // dm61 collect blood glucose values for parameter estimation over past 24 hours
-        let startHistoricalGlucose = lastGlucoseDate.addingTimeInterval(.hours(-48.0))
+        let startHistoricalGlucose = lastGlucoseDate.addingTimeInterval(.hours(-32.0))
         updateGroup.enter()
         glucoseStore.getCachedGlucoseSamples(start: startHistoricalGlucose) { (values) in
             self.historicalGlucose = values
@@ -909,7 +910,7 @@ extension LoopDataManager {
         
         // dm61 collect insulin effect time series for parameter estimation
         // effects due to insulin over past 24 hours
-        let startHistoricalInsulinEffect = lastGlucoseDate.addingTimeInterval(.hours(-48.0))
+        let startHistoricalInsulinEffect = lastGlucoseDate.addingTimeInterval(.hours(-32.0))
         updateGroup.enter()
         doseStore.getGlucoseEffects(start: startHistoricalInsulinEffect) { (result) -> Void in
             switch result {
@@ -927,7 +928,7 @@ extension LoopDataManager {
         
         // dm61 collect carb effect time series for parameter estimation
         // effects due to food entries over past 24 hours
-        let startHistoricalCarbEffect = lastGlucoseDate.addingTimeInterval(.hours(-48.0))
+        let startHistoricalCarbEffect = lastGlucoseDate.addingTimeInterval(.hours(-32.0))
         updateGroup.enter()
         carbStore.getGlucoseEffects(
             start: startHistoricalCarbEffect,
@@ -1033,6 +1034,36 @@ extension LoopDataManager {
             absorbed.estimateParametersForEntry(glucose: historicalGlucose, insulin: historicalInsulinEffect, carbs: historicalCarbEffect, counteraction: insulinCounteractionEffects)
         }
 
+        // dm61 construct parameterEstimates for grouped carb entries
+        parameterEstimates = []
+        for carbStatus in carbStatusesCompleted {
+            guard
+                // carbStatus.endDate < activeCarbsStart
+                let carbStatusEndTime = carbStatus.absorption?.observedDate.end, carbStatusEndTime < endEstimation ?? activeCarbsStart
+                else {
+                    continue
+            }
+            guard
+                let startDate = carbStatus.absorption?.observedDate.start,
+                let endDate = carbStatus.absorption?.observedDate.end,
+                let enteredCarbs = carbStatus.absorption?.total,
+                let observedCarbs = carbStatus.absorption?.observed,
+                let insulin = historicalInsulinEffect
+                else {
+                    continue
+            }
+            guard
+                parameterEstimates.last != nil,
+                parameterEstimates.last!.endDate >= startDate
+                else {
+                    parameterEstimates.append(ParameterEstimation(startDate: startDate, endDate: endDate, type: .carbAbsorption, glucose: historicalGlucose, insulinEffect: insulin, enteredCarbs: enteredCarbs, observedCarbs: observedCarbs))
+                    continue
+            }
+            parameterEstimates.last!.endDate = max( parameterEstimates.last!.endDate, endDate )
+            parameterEstimates.last!.enteredCarbs = HKQuantity(unit: .gram(), doubleValue: enteredCarbs.doubleValue(for: .gram()) + parameterEstimates.last!.enteredCarbs!.doubleValue(for: .gram()))
+            parameterEstimates.last!.observedCarbs = HKQuantity(unit: .gram(), doubleValue: observedCarbs.doubleValue(for: .gram()) + parameterEstimates.last!.observedCarbs!.doubleValue(for: .gram()))
+        }
+        
         // dm61 construct no-carb segments
         noCarbs = []
         guard
@@ -1081,6 +1112,57 @@ extension LoopDataManager {
         for noCarbsSegment in noCarbs {
             noCarbsSegment.estimateParametersNoCarbs()
         }
+        
+        // dm61 construct parameterEstimates for fasting intervals
+        noCarbs = []
+        guard
+            let startFasting = startEstimation,
+            let endFasting = endEstimation else {
+                return
+        }
+        var startFastingSegment = startFasting
+        var endFastingSegment = endFasting
+        for absorbed in absorbedCarbs {
+            endFastingSegment = absorbed.startDate
+            let insulinEffectFasting = historicalInsulinEffect?.filterDateRange(startFastingSegment.addingTimeInterval(.minutes(-5.0)), endFastingSegment) ?? []
+            let glucoseFasting = historicalGlucose.filter { (value) -> Bool in
+                if value.startDate < startFastingSegment {
+                    return false
+                }
+                if value.startDate > endFastingSegment {
+                    return false
+                }
+                return true
+            }
+            let basalEffect = updateBasalEffect(startDate: startFastingSegment, endDate: endFastingSegment)
+            if glucoseFasting.count > 5 {
+                let fastingSegment = ParameterEstimation(startDate: startFastingSegment, endDate: endFastingSegment, type: .fasting, glucose: glucoseFasting, insulinEffect: insulinEffectFasting, basalEffect: basalEffect)
+                parameterEstimates.append(fastingSegment)
+            }
+            startFastingSegment = absorbed.endDate
+        }
+        endNoCarbsSegment = endNoCarbs
+        let insulinEffectFasting = historicalInsulinEffect?.filterDateRange(startFastingSegment.addingTimeInterval(.minutes(-5.0)), endFastingSegment) ?? []
+        let glucoseFasting = historicalGlucose.filter { (value) -> Bool in
+            if value.startDate < startFastingSegment {
+                return false
+            }
+            if value.startDate > endFastingSegment {
+                return false
+            }
+            return true
+        }
+        let basalEffectFasting = updateBasalEffect(startDate: startNoCarbsSegment, endDate: endNoCarbsSegment)
+        if glucoseFasting.count > 5 {
+            let fastingSegment = ParameterEstimation(startDate: startFastingSegment, endDate: endFastingSegment, type: .fasting, glucose: glucoseFasting, insulinEffect: insulinEffectFasting, basalEffect: basalEffectFasting)
+            parameterEstimates.append(fastingSegment)
+        }
+        
+        for estimates in parameterEstimates {
+            estimates.estimateParameters()
+        }
+        
+        parameterEstimates.sort( by: {$0.startDate < $1.startDate} )
         
     }
 
@@ -2024,6 +2106,7 @@ class NoCarbs {
         self.insulinEffect = insulinEffect
         self.glucose = glucose
         self.basalEffect = basalEffect
+        
     }
     
     func estimateParametersNoCarbs() {
@@ -2037,6 +2120,10 @@ class NoCarbs {
             else {
                 return
         }
+        
+        //let startHour = startDate.addingTimeInterval(.hours(1)).addingTimeInterval(.minutes(-Double(Calendar.current.component(.minute, from: startDate))))
+        //let endHour = endDate.addingTimeInterval(.minutes(-Double(Calendar.current.component(.minute, from: endDate))))
+        
         
         let deltaGlucose = endGlucose - startGlucose
         let deltaGlucoseInsulin = startInsulin - endInsulin
@@ -2159,3 +2246,4 @@ class RegressionStatistics {
     var rSquared: Double?
     var nSamples: Int?
 }
+
