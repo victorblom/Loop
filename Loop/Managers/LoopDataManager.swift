@@ -897,6 +897,8 @@ extension LoopDataManager {
             }
         }
         
+        let parameterEstimation = ParameterEstimation(startDate: lastGlucoseDate.addingTimeInterval(.hours(-24.0)), endDate: lastGlucoseDate)
+        
         // dm61 collect data for parameter estimation
         // dm61 collect blood glucose values for parameter estimation over past 24 hours
         let startHistoricalGlucose = lastGlucoseDate.addingTimeInterval(.hours(-32.0))
@@ -907,6 +909,7 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         
+        parameterEstimation.glucose = self.historicalGlucose
         
         // dm61 collect insulin effect time series for parameter estimation
         // effects due to insulin over past 24 hours
@@ -925,6 +928,7 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         
+        parameterEstimation.insulinEffect = self.historicalInsulinEffect
         
         // dm61 collect carb effect time series for parameter estimation
         // effects due to food entries over past 24 hours
@@ -994,6 +998,8 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         
+        parameterEstimation.carbStatuses = self.carbStatuses
+        
         carbStatusesCompleted = carbStatuses.filter { $0.absorption?.estimatedTimeRemaining ?? TimeInterval.minutes(1.0) == TimeInterval.minutes(0.0) }.filterDateRange(startEstimation, endEstimation)
         
         var activeCarbsStart = Date()
@@ -1032,36 +1038,6 @@ extension LoopDataManager {
         
         for absorbed in absorbedCarbs {
             absorbed.estimateParametersForEntry(glucose: historicalGlucose, insulin: historicalInsulinEffect, carbs: historicalCarbEffect, counteraction: insulinCounteractionEffects)
-        }
-
-        // dm61 construct parameterEstimates for grouped carb entries
-        parameterEstimates = []
-        for carbStatus in carbStatusesCompleted {
-            guard
-                // carbStatus.endDate < activeCarbsStart
-                let carbStatusEndTime = carbStatus.absorption?.observedDate.end, carbStatusEndTime < endEstimation ?? activeCarbsStart
-                else {
-                    continue
-            }
-            guard
-                let startDate = carbStatus.absorption?.observedDate.start,
-                let endDate = carbStatus.absorption?.observedDate.end,
-                let enteredCarbs = carbStatus.absorption?.total,
-                let observedCarbs = carbStatus.absorption?.observed,
-                let insulin = historicalInsulinEffect
-                else {
-                    continue
-            }
-            guard
-                parameterEstimates.last != nil,
-                parameterEstimates.last!.endDate >= startDate
-                else {
-                    parameterEstimates.append(ParameterEstimation(startDate: startDate, endDate: endDate, type: .carbAbsorption, glucose: historicalGlucose, insulinEffect: insulin, enteredCarbs: enteredCarbs, observedCarbs: observedCarbs))
-                    continue
-            }
-            parameterEstimates.last!.endDate = max( parameterEstimates.last!.endDate, endDate )
-            parameterEstimates.last!.enteredCarbs = HKQuantity(unit: .gram(), doubleValue: enteredCarbs.doubleValue(for: .gram()) + parameterEstimates.last!.enteredCarbs!.doubleValue(for: .gram()))
-            parameterEstimates.last!.observedCarbs = HKQuantity(unit: .gram(), doubleValue: observedCarbs.doubleValue(for: .gram()) + parameterEstimates.last!.observedCarbs!.doubleValue(for: .gram()))
         }
         
         // dm61 construct no-carb segments
@@ -1112,58 +1088,7 @@ extension LoopDataManager {
         for noCarbsSegment in noCarbs {
             noCarbsSegment.estimateParametersNoCarbs()
         }
-        
-        // dm61 construct parameterEstimates for fasting intervals
-        noCarbs = []
-        guard
-            let startFasting = startEstimation,
-            let endFasting = endEstimation else {
-                return
-        }
-        var startFastingSegment = startFasting
-        var endFastingSegment = endFasting
-        for absorbed in absorbedCarbs {
-            endFastingSegment = absorbed.startDate
-            let insulinEffectFasting = historicalInsulinEffect?.filterDateRange(startFastingSegment.addingTimeInterval(.minutes(-5.0)), endFastingSegment) ?? []
-            let glucoseFasting = historicalGlucose.filter { (value) -> Bool in
-                if value.startDate < startFastingSegment {
-                    return false
-                }
-                if value.startDate > endFastingSegment {
-                    return false
-                }
-                return true
-            }
-            let basalEffect = updateBasalEffect(startDate: startFastingSegment, endDate: endFastingSegment)
-            if glucoseFasting.count > 5 {
-                let fastingSegment = ParameterEstimation(startDate: startFastingSegment, endDate: endFastingSegment, type: .fasting, glucose: glucoseFasting, insulinEffect: insulinEffectFasting, basalEffect: basalEffect)
-                parameterEstimates.append(fastingSegment)
-            }
-            startFastingSegment = absorbed.endDate
-        }
-        endNoCarbsSegment = endNoCarbs
-        let insulinEffectFasting = historicalInsulinEffect?.filterDateRange(startFastingSegment.addingTimeInterval(.minutes(-5.0)), endFastingSegment) ?? []
-        let glucoseFasting = historicalGlucose.filter { (value) -> Bool in
-            if value.startDate < startFastingSegment {
-                return false
-            }
-            if value.startDate > endFastingSegment {
-                return false
-            }
-            return true
-        }
-        let basalEffectFasting = updateBasalEffect(startDate: startNoCarbsSegment, endDate: endNoCarbsSegment)
-        if glucoseFasting.count > 5 {
-            let fastingSegment = ParameterEstimation(startDate: startFastingSegment, endDate: endFastingSegment, type: .fasting, glucose: glucoseFasting, insulinEffect: insulinEffectFasting, basalEffect: basalEffectFasting)
-            parameterEstimates.append(fastingSegment)
-        }
-        
-        for estimates in parameterEstimates {
-            estimates.estimateParameters()
-        }
-        
-        parameterEstimates.sort( by: {$0.startDate < $1.startDate} )
-        
+                
     }
 
     private func notify(forChange context: LoopUpdateContext) {
@@ -1328,19 +1253,7 @@ extension LoopDataManager {
         let endZeroTempDose = startZeroTempDose.addingTimeInterval(insulinActionDuration)
         let zeroTemp = DoseEntry(type: .tempBasal, startDate: startZeroTempDose, endDate: endZeroTempDose, value: 0.0, unit: DoseUnit.unitsPerHour)
         zeroTempEffect = zeroTemp.tempBasalGlucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivity, basalRateSchedule: basalRateSchedule).filterDateRange(startZeroTempDose, endZeroTempDose)
-        
-        /* dm61 hyperLoop moved this to prediction update
-        var diaFraction = 0.5
-        if let currentGlucoseValue = glucoseStore.latestGlucose?.quantity.doubleValue(for: .milligramsPerDeciliter),
-            let targetGlucoseValue = settings.glucoseTargetRangeSchedule?.quantityRange(at: Date()).averageValue(for: .milligramsPerDeciliter) {
-            let glucoseError = max(50.0, currentGlucoseValue - targetGlucoseValue)
-            diaFraction = min(1.0, glucoseError / 100.0)
-        }
-        let hyperLoopAgressiveness = 0.75
-        let hyperLoopEffectDuration = diaFraction * insulinActionDuration
-        let endHyperLoopEffect = startZeroTempDose.addingTimeInterval(hyperLoopEffectDuration)
-        fractionalZeroTempEffect = effectFraction(glucoseEffect: zeroTempEffect, fraction: hyperLoopAgressiveness).filterDateRange(startZeroTempDose, endHyperLoopEffect)
-        */
+    
     }
     
     // dm61 need this for the parameter estimator
