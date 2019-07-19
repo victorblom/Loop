@@ -1001,7 +1001,7 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         
-        parameterEstimates.carbStatuses = self.carbStatuses
+        parameterEstimates.carbStatuses = self.carbStatuses.sorted(by: { $0.startDate < $1.startDate })
         
         carbStatusesCompleted = carbStatuses.filter { $0.absorption?.estimatedTimeRemaining ?? TimeInterval.minutes(1.0) == TimeInterval.minutes(0.0) }.filterDateRange(startEstimation, endEstimation)
         
