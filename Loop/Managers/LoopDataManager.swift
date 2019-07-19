@@ -102,7 +102,7 @@ final class LoopDataManager {
         integralRC = IntegralRetrospectiveCorrection(standardCorrectionEffectDuration)
 
         standardRC = StandardRetrospectiveCorrection(standardCorrectionEffectDuration)
-
+        
         let carbCorrectionAbsorptionTime: TimeInterval = carbStore.defaultAbsorptionTimes.fast * carbStore.absorptionTimeOverrun
         carbCorrection = CarbCorrection(carbCorrectionAbsorptionTime)
 
@@ -222,7 +222,7 @@ final class LoopDataManager {
     private var startEstimation: Date? = nil
     private var endEstimation: Date? = nil
     private var noCarbs: [NoCarbs] = []
-    private var parameterEstimates: [ParameterEstimation] = []
+    private var parameterEstimates: ParameterEstimation = ParameterEstimation(startDate: Date(), endDate: Date())
 
     /// The last date at which a loop completed, from prediction to dose (if dosing is enabled)
     var lastLoopCompleted: Date? {
@@ -897,7 +897,7 @@ extension LoopDataManager {
             }
         }
         
-        let parameterEstimation = ParameterEstimation(startDate: lastGlucoseDate.addingTimeInterval(.hours(-24.0)), endDate: lastGlucoseDate)
+        parameterEstimates = ParameterEstimation(startDate: lastGlucoseDate.addingTimeInterval(.hours(-24.0)), endDate: lastGlucoseDate)
         
         // dm61 collect data for parameter estimation
         // dm61 collect blood glucose values for parameter estimation over past 24 hours
@@ -909,7 +909,10 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         
-        parameterEstimation.glucose = self.historicalGlucose
+        parameterEstimates.glucose = self.historicalGlucose
+        
+        let historicalBasalEffect = updateBasalEffect(startDate: lastGlucoseDate.addingTimeInterval(.hours(-24.0)), endDate: lastGlucoseDate)
+        parameterEstimates.basalEffect = historicalBasalEffect
         
         // dm61 collect insulin effect time series for parameter estimation
         // effects due to insulin over past 24 hours
@@ -928,7 +931,7 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         
-        parameterEstimation.insulinEffect = self.historicalInsulinEffect
+        parameterEstimates.insulinEffect = self.historicalInsulinEffect
         
         // dm61 collect carb effect time series for parameter estimation
         // effects due to food entries over past 24 hours
@@ -998,7 +1001,7 @@ extension LoopDataManager {
         }
         _ = updateGroup.wait(timeout: .distantFuture)
         
-        parameterEstimation.carbStatuses = self.carbStatuses
+        parameterEstimates.carbStatuses = self.carbStatuses
         
         carbStatusesCompleted = carbStatuses.filter { $0.absorption?.estimatedTimeRemaining ?? TimeInterval.minutes(1.0) == TimeInterval.minutes(0.0) }.filterDateRange(startEstimation, endEstimation)
         
@@ -1088,6 +1091,8 @@ extension LoopDataManager {
         for noCarbsSegment in noCarbs {
             noCarbsSegment.estimateParametersNoCarbs()
         }
+        
+        parameterEstimates.updateParameterEstimates()
                 
     }
 
@@ -1765,7 +1770,7 @@ extension LoopDataManager {
                 defaultDate = date
             }
             
-            let entries: [String] = [
+            var entries: [String] = [
                 "Estimation data start: \(dateFormatter.string(from: manager.startEstimation ?? defaultDate))",
                 "\n Estimation data end: \(dateFormatter.string(from: manager.endEstimation ?? defaultDate))",
                 "\n Estimates based on absorbed entries: [",
@@ -1842,7 +1847,14 @@ extension LoopDataManager {
                 "]"
                 
             ]
+            
+            self.parameterEstimates.generateDiagnosticReport { (report) in
+                entries.append(report)
+                entries.append("")
+            }
+            
             completion(entries.joined(separator: "\n"))
+            
         }
     }
 }

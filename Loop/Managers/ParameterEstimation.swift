@@ -28,7 +28,14 @@ class ParameterEstimation {
         self.endDate = endDate
     }
     
-    func assembleEstimationIntervals () {
+    func updateParameterEstimates() {
+        assembleEstimationIntervals()
+        for estimationInterval in estimationIntervals {
+            estimationInterval.estimateParameters()
+        }
+    }
+    
+    func assembleEstimationIntervals() {
         var runningEndDate = self.endDate
         for carbStatus in carbStatuses {
             guard
@@ -41,7 +48,7 @@ class ParameterEstimation {
                     continue
             }
             
-            // clean-up if an active carb absorption entry is detected and terminate
+            // clean-up if an active carb absorption entry is detected and terminate interval assembly
             if timeRemaining > 0 {
                 if entryStart < self.startDate {
                     self.endDate = self.startDate
@@ -68,13 +75,22 @@ class ParameterEstimation {
             if estimationIntervals.count == 0 {
                 // no intervals setup yet
                 if entryStart > self.startDate {
-                    //** add first fasting interval between self.startDate and entryStart
+                    // add first fasting interval between self.startDate and entryStart
+                    let glucoseEffect = self.glucose.filterDateRange(self.startDate, entryStart)
+                    let insulinEffect = self.insulinEffect?.filterDateRange(self.startDate, entryStart)
+                    let basalEffect = self.basalEffect?.filterDateRange(self.startDate, entryStart)
+                    estimationIntervals.append(EstimationInterval(startDate: self.startDate, endDate: entryStart, type: .fasting, glucose: glucoseEffect, insulinEffect: insulinEffect, basalEffect: basalEffect))
                 }
                 if entryEnd < self.endDate {
                     if estimationIntervals.count == 0 {
+                        // carbs started before startDate; move startDate to entryEnd
                         self.startDate = entryEnd
                     } else {
-                        //** add first carbAbsorption interval entryStart to entryEnd
+                        // add first carbAbsorption interval entryStart to entryEnd
+                        let glucoseEffect = self.glucose.filterDateRange(entryStart, entryEnd)
+                        let insulinEffect = self.insulinEffect?.filterDateRange(entryStart, entryEnd)
+                        let basalEffect = self.basalEffect?.filterDateRange(entryStart, entryEnd)
+                        estimationIntervals.append(EstimationInterval(startDate: entryStart, endDate: entryEnd, type: .carbAbsorption, glucose: glucoseEffect, insulinEffect: insulinEffect, basalEffect: basalEffect, enteredCarbs: enteredCarbs, observedCarbs: observedCarbs))
                         runningEndDate = entryEnd
                     }
                 }
@@ -82,13 +98,25 @@ class ParameterEstimation {
                 // at least one interval already setup
                 if estimationIntervals.last!.estimationIntervalType == .fasting {
                     estimationIntervals.last!.endDate = entryStart // terminate fasting interval
-                    //** add carbAbsorption interval from entryStart to entryEnd
+                    // add carbAbsorption interval from entryStart to entryEnd
+                    let glucoseEffect = self.glucose.filterDateRange(entryStart, entryEnd)
+                    let insulinEffect = self.insulinEffect?.filterDateRange(entryStart, entryEnd)
+                    let basalEffect = self.basalEffect?.filterDateRange(entryStart, entryEnd)
+                    estimationIntervals.append(EstimationInterval(startDate: entryStart, endDate: entryEnd, type: .carbAbsorption, glucose: glucoseEffect, insulinEffect: insulinEffect, basalEffect: basalEffect, enteredCarbs: enteredCarbs, observedCarbs: observedCarbs))
                     runningEndDate = entryEnd
-                }
-                if estimationIntervals.last!.estimationIntervalType == .carbAbsorption {
+                } else {
+                    // here previous estimaton interval must be .carbAbsorption
                     if entryStart > estimationIntervals.last!.endDate {
-                        //** add fasting interval between last endDate and entryStart
+                        // add fasting interval between last endDate and entryStart
+                        let glucoseEffect = self.glucose.filterDateRange(estimationIntervals.last!.endDate, entryStart)
+                        let insulinEffect = self.insulinEffect?.filterDateRange(estimationIntervals.last!.endDate, entryStart)
+                        let basalEffect = self.basalEffect?.filterDateRange(estimationIntervals.last!.endDate, entryStart)
+                        estimationIntervals.append(EstimationInterval(startDate: estimationIntervals.last!.endDate, endDate: entryStart, type: .fasting, glucose: glucoseEffect, insulinEffect: insulinEffect, basalEffect: basalEffect))
                         //** add carbAbsorption interval from entryStart to entryEnd
+                        let glucoseEffectEntry = self.glucose.filterDateRange(entryStart, entryEnd)
+                        let insulinEffectEntry = self.insulinEffect?.filterDateRange(entryStart, entryEnd)
+                        let basalEffectEntry = self.basalEffect?.filterDateRange(entryStart, entryEnd)
+                        estimationIntervals.append(EstimationInterval(startDate: entryStart, endDate: entryEnd, type: .carbAbsorption, glucose: glucoseEffectEntry, insulinEffect: insulinEffectEntry, basalEffect: basalEffectEntry, enteredCarbs: enteredCarbs, observedCarbs: observedCarbs))
                         runningEndDate = entryEnd
                     } else {
                         // merge carbAbsorption interval into previous carbAbsorption interval
@@ -101,11 +129,19 @@ class ParameterEstimation {
                         let observedCarbGrams = observedCarbs.doubleValue(for: .gram())
                         estimationIntervals.last!.observedCarbs = HKQuantity(unit: .gram(), doubleValue: observedCarbGrams + previouslyObservedCarbGrams)
                     }
+                    
                 }
+
             }
         }
-        // at this point the last interval should be carbAbsorption
-        //*** add a fasting interval from the runningEndDate and self.endDate
+        // the last previously entered interval should be carbAbsorption
+        if runningEndDate < self.endDate {
+            //add a fasting interval from the runningEndDate and self.endDate
+            let glucoseEffect = self.glucose.filterDateRange(runningEndDate, self.endDate)
+            let insulinEffect = self.insulinEffect?.filterDateRange(runningEndDate, self.endDate)
+            let basalEffect = self.basalEffect?.filterDateRange(runningEndDate, self.endDate)
+            estimationIntervals.append(EstimationInterval(startDate: runningEndDate, endDate: self.endDate, type: .fasting, glucose: glucoseEffect, insulinEffect: insulinEffect, basalEffect: basalEffect))
+        }
     }
 }
 
@@ -125,7 +161,7 @@ class EstimationInterval {
     let unit = HKUnit.milligramsPerDeciliter
     let velocityUnit = HKUnit.milligramsPerDeciliter.unitDivided(by: .minute())
     
-    init(startDate: Date, endDate: Date, type: EstimationIntervalType, glucose: [GlucoseValue], insulinEffect: [GlucoseEffect], basalEffect: [GlucoseEffect]? = nil, enteredCarbs: HKQuantity? = nil, observedCarbs: HKQuantity? = nil) {
+    init(startDate: Date, endDate: Date, type: EstimationIntervalType, glucose: [GlucoseValue], insulinEffect: [GlucoseEffect]?, basalEffect: [GlucoseEffect]? = nil, enteredCarbs: HKQuantity? = nil, observedCarbs: HKQuantity? = nil) {
         self.startDate = startDate
         self.endDate = endDate
         self.estimationIntervalType = type
@@ -304,13 +340,34 @@ extension Collection where Iterator.Element == GlucoseValue {
     }
 }
 
-/*
- let glucoseValues = self.glucose?.filter { (value) -> Bool in
- if value.startDate < start {
- return false
- }
- if value.startDate > end {
- return false
- }
- return true
- }*/
+extension ParameterEstimation {
+    /// Generates a diagnostic report about the current state
+    ///
+    /// - parameter completion: A closure called once the report has been generated. The closure takes a single argument of the report string.
+    func generateDiagnosticReport(_ completion: @escaping (_ report: String) -> Void) {
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.timeStyle = .medium
+        dateFormatter.dateStyle = .medium
+        /*
+        let userCalendar = Calendar.current
+        var defaultDateComponents = DateComponents()
+        var defaultDate = Date()
+        defaultDateComponents.year = 1000
+        if let date = userCalendar.date(from: defaultDateComponents) {
+            defaultDate = date
+        }*/
+        
+        var report: [String] = [
+            "## State of Parameter Estimation",
+            estimationIntervals.reduce(into: "", { (entries, entry) in
+                entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)), \(entry.estimationIntervalType), \(String(describing: entry.enteredCarbs?.doubleValue(for: .gram()))), \(String(describing: entry.observedCarbs?.doubleValue(for: .gram()))), \(String(describing: entry.estimatedMultipliers?.insulinSensitivityMultiplier)), \(String(describing: entry.estimatedMultipliers?.carbRatioMultiplier)),\(String(describing: entry.estimatedMultipliers?.carbSensitivityMultiplier)), \(String(describing: entry.estimatedMultipliers?.basalMultiplier))"
+            )}),
+            "",
+        ]
+        report.append("")
+        completion(report.joined(separator: "\n"))
+    }
+    
+}
+
