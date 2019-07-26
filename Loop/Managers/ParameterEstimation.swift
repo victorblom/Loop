@@ -62,6 +62,7 @@ class ParameterEstimation {
                     return // if active carb absorption started before start of the estimation interval we have no valid intervals available for estimation
                 }
                 
+                // TODO: fix starDate > self.endDate case
                 runningEndDate = entryStart
                 var lastAbsorptionEnd = self.startDate
                 for (index, estimationInterval) in self.estimationIntervals.enumerated() {
