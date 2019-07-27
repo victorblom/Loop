@@ -414,6 +414,19 @@ fileprivate func projectionToLine(a: Double, b: Double, c: Double) -> (Double, D
     }
 }
 
+/// projection of point (1, 1, 1) to plane a * x + b * y + c * z = d
+fileprivate func projectionToPlane(a: Double, b: Double, c: Double, d: Double) -> (Double, Double, Double) {
+    let dotProduct = pow(a, 2.0) + pow(b, 2.0) + pow(c, 2.0)
+    if dotProduct == 0.0 {
+        return(1.0, 1.0, 1.0)
+    } else {
+        let p1 = (pow(b, 2.0) + pow(c, 2.0) - a * (b + c - d) ) / dotProduct
+        let p2 = (pow(a, 2.0) + pow(c, 2.0) - b * (a + c - d) ) / dotProduct
+        let p3 = (pow(a, 2.0) + pow(b, 2.0) - c * (a + b - d) ) / dotProduct
+        return(p1, p2, p3)
+    }
+}
+
 /// filterDataRange for [GlucoseValue]
 extension Collection where Iterator.Element == GlucoseValue {
     func filterDateRange(_ startDate: Date?, _ endDate: Date?) -> [Iterator.Element] {
