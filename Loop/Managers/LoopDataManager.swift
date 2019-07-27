@@ -1759,7 +1759,7 @@ extension LoopDataManager {
     func generateParameterEstimationReport(_ completion: @escaping (_ report: String) -> Void) {
         getParameterEstimationLoopState { (manager, state) in
             
-            /*
+            
             let dateFormatter = DateFormatter()
             dateFormatter.timeStyle = .medium
             dateFormatter.dateStyle = .medium
@@ -1770,12 +1770,16 @@ extension LoopDataManager {
             if let date = userCalendar.date(from: defaultDateComponents) {
                 defaultDate = date
             }
-            */
+            
             
             var entries: [String] = []
             
-            /*
-            var entries: [String] = [
+            self.parameterEstimates.generateDiagnosticReport { (report) in
+                entries.append(report)
+                entries.append("")
+            }
+            
+            entries += [
                 "Estimation data start: \(dateFormatter.string(from: manager.startEstimation ?? defaultDate))",
                 "\n Estimation data end: \(dateFormatter.string(from: manager.endEstimation ?? defaultDate))",
                 "\n Estimates based on absorbed entries: [",
@@ -1852,12 +1856,7 @@ extension LoopDataManager {
                 "]"
                 
             ]
-             */
             
-            self.parameterEstimates.generateDiagnosticReport { (report) in
-                entries.append(report)
-                entries.append("")
-            }
             
             completion(entries.joined(separator: "\n"))
             
