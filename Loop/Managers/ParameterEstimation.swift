@@ -31,9 +31,11 @@ class ParameterEstimation {
     
     func updateParameterEstimates() {
         assembleEstimationIntervals()
-        NSLog("myLoop: number of estimation intervals: %d", estimationIntervals.count)
+        print("myLoop: number of estimation intervals: ", estimationIntervals.count)
         for estimationInterval in estimationIntervals {
-            estimationInterval.estimateParameters()
+            let start = estimationInterval.startDate
+            let end = estimationInterval.endDate
+            estimationInterval.estimateParameterMultipliers(start, end)
         }
     }
     
@@ -256,12 +258,14 @@ class EstimationInterval {
 
     } */
     
+    /*
     func estimateParameters() {
         estimateParameterMultipliers(start: self.startDate, end: self.endDate)
         return
     }
+    */
     
-    func estimateParameterMultipliers(start: Date, end: Date) {
+    func estimateParameterMultipliers(_ start: Date, _ end: Date) {
         
         guard
             let glucose = self.glucose?.filterDateRange(start, end),
@@ -323,6 +327,7 @@ class EstimationInterval {
         self.estimatedMultipliers = estimatedMultipliers
     }
     
+    /*
     func estimateParametersDuringFasting(start: Date, end: Date) {
         
         guard
@@ -361,7 +366,9 @@ class EstimationInterval {
         
         self.estimatedMultipliers = estimatedMultipliers
     }
+    */
     
+    /*
     func estimateParametersForCarbEntries() {
         
         let start = self.startDate
@@ -428,6 +435,7 @@ class EstimationInterval {
         
         return
     }
+    */
     
 }
 
@@ -506,8 +514,8 @@ extension ParameterEstimation {
     func generateDiagnosticReport(_ completion: @escaping (_ report: String) -> Void) {
         
         let dateFormatter = DateFormatter()
-        dateFormatter.timeStyle = .medium
-        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .short
+        dateFormatter.dateStyle = .short
         /*
         let userCalendar = Calendar.current
         var defaultDateComponents = DateComponents()
@@ -518,12 +526,13 @@ extension ParameterEstimation {
         }*/
         
         var report: [String] = [
-            "## Settings Review \n", self.status,
+            "## Settings Review \n", "From: \(dateFormatter.string(from: self.startDate)) \n", "To: \(dateFormatter.string(from: self.endDate)) \n", self.status,
             estimationIntervals.reduce(into: "", { (entries, entry) in
-                entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)), \(entry.estimationIntervalType), \(String(describing: entry.enteredCarbs?.doubleValue(for: .gram()))), \(String(describing: entry.observedCarbs?.doubleValue(for: .gram()))), \n deltaBG: \(String(describing: entry.deltaGlucose)), \n deltaBGinsulin:, \(String(describing: entry.deltaGlucoseInsulin)), \n deltaBGbasal: \(String(describing: entry.deltaGlucoseBasal)), \n ISF multiplier: \(String(describing: entry.estimatedMultipliers?.insulinSensitivityMultiplier)), \n CR multiplier: \(String(describing: entry.estimatedMultipliers?.carbRatioMultiplier)), \n CSF multiplier: \(String(describing: entry.estimatedMultipliers?.carbSensitivityMultiplier)), \n Basal multiplier: \(String(describing: entry.estimatedMultipliers?.basalMultiplier))"
+                entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)), \(entry.estimationIntervalType), \(String(describing: entry.enteredCarbs?.doubleValue(for: .gram()))), \(String(describing: entry.observedCarbs?.doubleValue(for: .gram()))), \n deltaBG: \(String(describing: entry.deltaGlucose)), \n deltaBGinsulin: \(String(describing: entry.deltaGlucoseInsulin)), \n deltaBGbasal: \(String(describing: entry.deltaGlucoseBasal)), \n ISF multiplier: \(String(describing: entry.estimatedMultipliers?.insulinSensitivityMultiplier)), \n CR multiplier: \(String(describing: entry.estimatedMultipliers?.carbRatioMultiplier)), \n Basal multiplier: \(String(describing: entry.estimatedMultipliers?.basalMultiplier))"
             )}),
             "",
         ]
+                
         report.append("")
         completion(report.joined(separator: "\n"))
     }
