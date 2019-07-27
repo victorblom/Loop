@@ -107,19 +107,6 @@ class ParameterEstimation {
                 }
                 self.endDate = runningEndDate
                 
-                // TODO: check if we need this
-                /*
-                self.endDate = runningEndDate
-                if lastAbsorptionEnd < self.endDate {
-                    // add last fasting interval between lastAbsorptionEnd and self.endDate
-                    let glucoseFasting = self.glucose.filterDateRange(lastAbsorptionEnd, self.endDate)
-                    let insulinEffectFasting = self.insulinEffect?.filterDateRange(lastAbsorptionEnd, self.endDate)
-                    let basalEffectFasting = self.basalEffect?.filterDateRange(lastAbsorptionEnd, self.endDate)
-                    estimationIntervals.append(EstimationInterval(startDate: lastAbsorptionEnd, endDate: self.endDate, type: .fasting, glucose: glucoseFasting, insulinEffect: insulinEffectFasting, basalEffect: basalEffectFasting))
-                    print("myLoop: added last fasting interval from:", lastAbsorptionEnd, " to: ", self.endDate)
-                }
-                */
-
                 self.status = "*** Completed assembly of estimation intervals after trimming out active absorptions"
                 print("myLoop assembly completed after trimming trailing absorptions, startDate:", self.startDate, "endDate: ", self.endDate)
                 return
@@ -249,6 +236,7 @@ class EstimationInterval {
         self.observedCarbs = observedCarbs
     }
     
+    /*
     func estimateParameters() {
 
         switch self.estimationIntervalType {
@@ -266,6 +254,73 @@ class EstimationInterval {
         
         }
 
+    } */
+    
+    func estimateParameters() {
+        estimateParameterMultipliers(start: self.startDate, end: self.endDate)
+        return
+    }
+    
+    func estimateParameterMultipliers(start: Date, end: Date) {
+        
+        guard
+            let glucose = self.glucose?.filterDateRange(start, end),
+            let insulinEffect = self.insulinEffect?.filterDateRange(start, end),
+            let basalEffect = self.basalEffect?.filterDateRange(start, end),
+            glucose.count > 5
+            else {
+                return
+        }
+        
+        guard
+            let startGlucose = glucose.first?.quantity.doubleValue(for: unit),
+            let endGlucose = glucose.last?.quantity.doubleValue(for: unit),
+            let startInsulin = insulinEffect.first?.quantity.doubleValue(for: unit),
+            let endInsulin = insulinEffect.last?.quantity.doubleValue(for: unit),
+            let startBasal = basalEffect.first?.quantity.doubleValue(for: unit),
+            let endBasal = basalEffect.last?.quantity.doubleValue(for: unit)
+            else {
+                return
+        }
+        
+        print("myLoop startGlucose:", startGlucose, "endGlucose:", endGlucose)
+        
+        let deltaGlucose = endGlucose - startGlucose
+        self.deltaGlucose = deltaGlucose
+        let deltaGlucoseInsulin = startInsulin - endInsulin
+        self.deltaGlucoseInsulin = deltaGlucoseInsulin
+        let deltaGlucoseBasal = endBasal - startBasal
+        self.deltaGlucoseBasal = deltaGlucoseBasal
+        
+        //a = -deltaBG;
+        //b = alpha*(deltaBG + deltaBGInsulin);
+        //c = deltaBGBasal;
+        //d = deltaBGBasal + deltaBGInsulin;
+        
+        var actualOverObservedRatio = 0.0
+        if let observedCarbs = self.observedCarbs?.doubleValue(for: .gram()),
+            let enteredCarbs = self.enteredCarbs?.doubleValue(for: .gram()),
+            enteredCarbs > 0 {
+            let observedOverEnteredRatio = observedCarbs / enteredCarbs
+            actualOverObservedRatio = (1.0 / observedOverEnteredRatio).squareRoot()
+        }
+        
+        let insulinWeight = -deltaGlucose
+        let carbWeight = actualOverObservedRatio * (deltaGlucose + deltaGlucoseInsulin)
+        let basalWeight = deltaGlucoseBasal
+        let insulinBasalWeight = deltaGlucoseInsulin + deltaGlucoseBasal
+        
+        //isfMultiplierX = 1/p1
+        //crMultiplierX = 1/p2
+        //basalMultiplierX = p3
+        
+        let (insulinSensitivityMultiplierInverse, carbRatioMultiplierInverse, basalMultiplier) = projectionToPlane(a: insulinWeight, b: carbWeight, c: basalWeight, d: insulinBasalWeight)
+        let insulinSensitivityMultiplier = 1.0 / insulinSensitivityMultiplierInverse
+        let carbRatioMultiplier = 1.0 / carbRatioMultiplierInverse
+        
+        let estimatedMultipliers = EstimatedMultipliers(startDate: startDate, endDate: endDate, basalMultiplier: basalMultiplier, insulinSensitivityMultiplier: insulinSensitivityMultiplier, carbSensitivityMultiplier: insulinSensitivityMultiplier, carbRatioMultiplier: carbRatioMultiplier)
+        
+        self.estimatedMultipliers = estimatedMultipliers
     }
     
     func estimateParametersDuringFasting(start: Date, end: Date) {
