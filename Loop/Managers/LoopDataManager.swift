@@ -1761,8 +1761,10 @@ extension LoopDataManager {
             
             
             let dateFormatter = DateFormatter()
-            dateFormatter.timeStyle = .medium
-            dateFormatter.dateStyle = .medium
+            dateFormatter.timeStyle = .short
+            dateFormatter.dateStyle = .short
+            
+            /* dm61 do not need
             let userCalendar = Calendar.current
             var defaultDateComponents = DateComponents()
             var defaultDate = Date()
@@ -1770,6 +1772,7 @@ extension LoopDataManager {
             if let date = userCalendar.date(from: defaultDateComponents) {
                 defaultDate = date
             }
+            */
             
             
             var entries: [String] = []
@@ -1779,6 +1782,7 @@ extension LoopDataManager {
                 entries.append("")
             }
             
+            /* dm61 obsolete, remove
             entries += [
                 "Estimation data start: \(dateFormatter.string(from: manager.startEstimation ?? defaultDate))",
                 "\n Estimation data end: \(dateFormatter.string(from: manager.endEstimation ?? defaultDate))",
@@ -1856,7 +1860,7 @@ extension LoopDataManager {
                 "]"
                 
             ]
-            
+            */
             
             completion(entries.joined(separator: "\n"))
             

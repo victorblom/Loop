@@ -532,7 +532,31 @@ extension ParameterEstimation {
             )}),
             "",
         ]
-                
+        
+        
+        report += ["\n -- paramater estimation diagnostics -- \n"]
+        
+        // Glucose values
+        report += ["\n *** Glucose values (start, mg/dL) \n",
+        self.glucose.reduce(into: "", { (entries, entry) in
+        entries.append("* \(dateFormatter.string(from: entry.startDate)), \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
+        })]
+        
+        // Insulin effects
+        report += ["\n *** Insulin effects (start, mg/dL) \n",
+                   (self.insulinEffect ?? []).reduce(into: "", { (entries, entry) in
+                    entries.append("* \(dateFormatter.string(from: entry.startDate)), \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
+                   })]
+        
+        // Zero basal effects
+        report += ["\n *** Zero basal effects (start, mg/dL) \n",
+                   (self.basalEffect ?? []).reduce(into: "", { (entries, entry) in
+                    entries.append("* \(dateFormatter.string(from: entry.startDate)), \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
+                   })]
+        
+        // Carb entry statuses
+        report += ["\n *** carbStatuses: \(self.carbStatuses) \n"]
+        
         report.append("")
         completion(report.joined(separator: "\n"))
     }
