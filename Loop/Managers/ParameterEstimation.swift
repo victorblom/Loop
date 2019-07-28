@@ -523,9 +523,11 @@ extension ParameterEstimation {
             "",
         ]
         
+        report += ["\n -- Estimates of parameter multipliers during fasting subintervals -- \n"]
+        
         for estimationInterval in estimationIntervals {
             if estimationInterval.estimationIntervalType == .fasting {
-                report += ["\n Fasting estimation subintervals from: \(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))\n"]
+                report += ["\n Fasting from: \(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))\n"]
                 for estimationSubInterval in estimationInterval.estimatedMultipliersSubIntervals {
                     report += ["From: \(dateFormatter.string(from: estimationSubInterval?.startDate ?? Date())) To: \(dateFormatter.string(from: estimationSubInterval?.endDate ?? Date())) \n ISF multiplier: \(String(describing: estimationSubInterval?.insulinSensitivityMultiplier))\n Basal multiplier: \(String(describing: estimationSubInterval?.basalMultiplier))\n"]
                 }
