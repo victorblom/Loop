@@ -517,20 +517,34 @@ extension ParameterEstimation {
             guard
                 var insulinSensitivityMultiplier = estimationInterval.estimatedMultipliers?.insulinSensitivityMultiplier,
                 var carbRatioMultiplier = estimationInterval.estimatedMultipliers?.carbRatioMultiplier,
-                var basalMultiplier = estimationInterval.estimatedMultipliers?.basalMultiplier
+                var basalMultiplier = estimationInterval.estimatedMultipliers?.basalMultiplier,
+                let deltaGlucose = estimationInterval.estimatedMultipliers?.deltaGlucose,
+                let deltaGlucoseBasal = estimationInterval.estimatedMultipliers?.deltaGlucoseBasal,
+                let deltaGlucoseInsulin = estimationInterval.estimatedMultipliers?.deltaGlucoseInsulin
                 else { continue }
             insulinSensitivityMultiplier = (insulinSensitivityMultiplier * 100).rounded() / 100
             carbRatioMultiplier = (carbRatioMultiplier * 100).rounded() / 100
             basalMultiplier = (basalMultiplier * 100).rounded() / 100
             
             if estimationInterval.estimationIntervalType == .fasting {
+                var isfTag = ""
+                if deltaGlucose * deltaGlucoseInsulin > 0 {
+                    isfTag = "❌"
+                }
+                if deltaGlucose * deltaGlucoseInsulin < 0 && deltaGlucoseInsulin > 0.5 * deltaGlucoseBasal && basalMultiplier < 1.5 && basalMultiplier > 0.5 {
+                    isfTag = "✅"
+                }
+                var basalTag = ""
+                if basalMultiplier < 1.5 && basalMultiplier > 0.5 && deltaGlucoseBasal > 0.5 * deltaGlucoseInsulin {
+                    basalTag = "✅"
+                }
                 report += ["** Fasting **\n\(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))"]
                 if insulinSensitivityMultiplier > 1.5 || insulinSensitivityMultiplier < 0.5 {
                     report += ["ISF multiplier: not available"]
                 } else {
-                    report += ["ISF multiplier: \(insulinSensitivityMultiplier)"]
+                    report += ["ISF multiplier: \(insulinSensitivityMultiplier) \(isfTag)"]
                 }
-                report += ["Basal multiplier: \(basalMultiplier)"]
+                report += ["Basal multiplier: \(basalMultiplier) \(basalTag)"]
                 if basalMultiplier > 1.5 {
                     report += ["Warning: unannounced meals?"]
                 }
@@ -549,19 +563,51 @@ extension ParameterEstimation {
         
         report += ["\n=================================="]
         report += ["Fasting subintervals"]
-        report += ["==================================\n"]
+        report += ["=================================="]
         
         for estimationInterval in estimationIntervals {
             if estimationInterval.estimationIntervalType == .fasting {
                 report += ["----------------------------------"]
-                report += ["** Fasting **\n\(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))"]
+                report += ["\(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))"]
                 report += ["----------------------------------"]
                 for estimationSubInterval in estimationInterval.estimatedMultipliersSubIntervals {
-                    report += ["\(dateFormatter.string(from: estimationSubInterval?.startDate ?? Date())) to \(dateFormatter.string(from: estimationSubInterval?.endDate ?? Date()))\nISF multiplier: \(String(describing: estimationSubInterval?.insulinSensitivityMultiplier))\nBasal multiplier: \(String(describing: estimationSubInterval?.basalMultiplier))\n"]
+                    guard
+                        var insulinSensitivityMultiplier = estimationSubInterval?.insulinSensitivityMultiplier,
+                        var carbRatioMultiplier = estimationSubInterval?.carbRatioMultiplier,
+                        var basalMultiplier = estimationSubInterval?.basalMultiplier,
+                        let deltaGlucose = estimationSubInterval?.deltaGlucose,
+                        let deltaGlucoseBasal = estimationSubInterval?.deltaGlucoseBasal,
+                        let deltaGlucoseInsulin = estimationSubInterval?.deltaGlucoseInsulin
+                        else { continue }
+                    insulinSensitivityMultiplier = (insulinSensitivityMultiplier * 100).rounded() / 100
+                    carbRatioMultiplier = (carbRatioMultiplier * 100).rounded() / 100
+                    basalMultiplier = (basalMultiplier * 100).rounded() / 100
+                    var isfTag = ""
+                    if deltaGlucose * deltaGlucoseInsulin > 0 {
+                        isfTag = "❌"
+                    }
+                    if deltaGlucose * deltaGlucoseInsulin < 0 && deltaGlucoseInsulin > 0.5 * deltaGlucoseBasal && basalMultiplier < 1.5 && basalMultiplier > 0.5 {
+                        isfTag = "✅"
+                    }
+                    var basalTag = ""
+                    if basalMultiplier < 1.5 && basalMultiplier > 0.5 && deltaGlucoseBasal > 0.5 * deltaGlucoseInsulin {
+                        basalTag = "✅"
+                    }
+                    report += ["\(dateFormatter.string(from: estimationSubInterval?.startDate ?? Date())) to \(dateFormatter.string(from: estimationSubInterval?.endDate ?? Date()))"]
+                    if insulinSensitivityMultiplier > 1.5 || insulinSensitivityMultiplier < 0.5 {
+                        report += ["ISF multiplier: not available"]
+                    } else {
+                        report += ["ISF multiplier: \(insulinSensitivityMultiplier) \(isfTag)"]
+                    }
+                    report += ["Basal multiplier: \(basalMultiplier) \(basalTag)"]
+                    if basalMultiplier > 1.5 {
+                        report += ["Warning: unannounced meals?"]
+                    }
+                    report += ["---"]
                 }
             }
         }
-        report += ["=================================="]
+        report += ["\n=================================="]
         report += ["Paramater estimation diagnostics"]
         report += ["=================================="]
         report += [
