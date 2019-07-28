@@ -33,9 +33,25 @@ class ParameterEstimation {
         assembleEstimationIntervals()
         print("myLoop: number of estimation intervals: ", estimationIntervals.count)
         for estimationInterval in estimationIntervals {
-            let start = estimationInterval.startDate
-            let end = estimationInterval.endDate
-            estimationInterval.estimateParameterMultipliers(start, end)
+            let startInterval = estimationInterval.startDate
+            let endInterval = estimationInterval.endDate
+            estimationInterval.estimatedMultipliers = estimationInterval.estimateParameterMultipliers(startInterval, endInterval)
+
+            // add estimation subIntervals to fasting estimation intervals
+            if estimationInterval.estimationIntervalType == .fasting {
+                var startSubInterval = estimationInterval.startDate
+                while startSubInterval.addingTimeInterval(.minutes(60)) <
+                    estimationInterval.endDate {
+                        var endSubInterval = startSubInterval.addingTimeInterval(.minutes(60))
+                        if endSubInterval.addingTimeInterval(.minutes(60)) > estimationInterval.endDate {
+                            endSubInterval = estimationInterval.endDate
+                        }
+                        let estimatedMultipliers = estimationInterval.estimateParameterMultipliers(startSubInterval, endSubInterval)
+                        estimationInterval.estimatedMultipliersSubIntervals.append(estimatedMultipliers)
+                        startSubInterval = endSubInterval.addingTimeInterval(.minutes(-30))
+                }
+            }
+            
         }
     }
     
@@ -214,13 +230,10 @@ class EstimationInterval {
     var glucose: [GlucoseValue]?
     var insulinEffect: [GlucoseEffect]?
     var basalEffect: [GlucoseEffect]?
-    var deltaGlucose: Double?
-    var deltaGlucoseInsulin: Double?
-    var deltaGlucoseBasal: Double?
     var enteredCarbs: HKQuantity?
     var observedCarbs: HKQuantity?
     var estimatedMultipliers: EstimatedMultipliers?
-    var estimatedMultipliersSubIntervals: [EstimatedMultipliers] = []
+    var estimatedMultipliersSubIntervals: [EstimatedMultipliers?] = []
     var estimationIntervalType: EstimationIntervalType
 
     
@@ -238,34 +251,7 @@ class EstimationInterval {
         self.observedCarbs = observedCarbs
     }
     
-    /*
-    func estimateParameters() {
-
-        switch self.estimationIntervalType {
-            
-        case .carbAbsorption:
-            estimateParametersForCarbEntries()
-            return
-            
-        case .fasting:
-            estimateParametersDuringFasting(start: self.startDate, end: self.endDate)
-            return
-            
-        default:
-            return
-        
-        }
-
-    } */
-    
-    /*
-    func estimateParameters() {
-        estimateParameterMultipliers(start: self.startDate, end: self.endDate)
-        return
-    }
-    */
-    
-    func estimateParameterMultipliers(_ start: Date, _ end: Date) {
+    func estimateParameterMultipliers(_ start: Date, _ end: Date) -> EstimatedMultipliers? {
         
         guard
             let glucose = self.glucose?.filterDateRange(start, end),
@@ -273,7 +259,7 @@ class EstimationInterval {
             let basalEffect = self.basalEffect?.filterDateRange(start, end),
             glucose.count > 5
             else {
-                return
+                return( nil )
         }
         
         guard
@@ -284,17 +270,14 @@ class EstimationInterval {
             let startBasal = basalEffect.first?.quantity.doubleValue(for: unit),
             let endBasal = basalEffect.last?.quantity.doubleValue(for: unit)
             else {
-                return
+                return( nil )
         }
         
         print("myLoop startGlucose:", startGlucose, "endGlucose:", endGlucose)
         
         let deltaGlucose = endGlucose - startGlucose
-        self.deltaGlucose = deltaGlucose
         let deltaGlucoseInsulin = startInsulin - endInsulin
-        self.deltaGlucoseInsulin = deltaGlucoseInsulin
         let deltaGlucoseBasal = endBasal - startBasal
-        self.deltaGlucoseBasal = deltaGlucoseBasal
         
         //a = -deltaBG;
         //b = alpha*(deltaBG + deltaBGInsulin);
@@ -322,9 +305,10 @@ class EstimationInterval {
         let insulinSensitivityMultiplier = 1.0 / insulinSensitivityMultiplierInverse
         let carbRatioMultiplier = 1.0 / carbRatioMultiplierInverse
         
-        let estimatedMultipliers = EstimatedMultipliers(startDate: startDate, endDate: endDate, basalMultiplier: basalMultiplier, insulinSensitivityMultiplier: insulinSensitivityMultiplier, carbSensitivityMultiplier: insulinSensitivityMultiplier, carbRatioMultiplier: carbRatioMultiplier)
+        let estimatedMultipliers = EstimatedMultipliers(startDate: start, endDate: end, basalMultiplier: basalMultiplier, insulinSensitivityMultiplier: insulinSensitivityMultiplier, carbSensitivityMultiplier: insulinSensitivityMultiplier, carbRatioMultiplier: carbRatioMultiplier, deltaGlucose: deltaGlucose, deltaGlucoseInsulin: deltaGlucoseInsulin, deltaGlucoseBasal: deltaGlucoseBasal)
         
-        self.estimatedMultipliers = estimatedMultipliers
+        // self.estimatedMultipliers = estimatedMultipliers
+        return( estimatedMultipliers )
     }
     
     /*
@@ -446,14 +430,20 @@ class EstimatedMultipliers {
     var insulinSensitivityMultiplier: Double
     var carbSensitivityMultiplier: Double
     var carbRatioMultiplier: Double
+    var deltaGlucose: Double
+    var deltaGlucoseInsulin: Double
+    var deltaGlucoseBasal: Double
     
-    init(startDate: Date, endDate: Date, basalMultiplier: Double, insulinSensitivityMultiplier: Double, carbSensitivityMultiplier: Double, carbRatioMultiplier: Double) {
+    init(startDate: Date, endDate: Date, basalMultiplier: Double, insulinSensitivityMultiplier: Double, carbSensitivityMultiplier: Double, carbRatioMultiplier: Double, deltaGlucose: Double, deltaGlucoseInsulin: Double, deltaGlucoseBasal: Double) {
         self.startDate = startDate
         self.endDate = endDate
         self.basalMultiplier = basalMultiplier
         self.insulinSensitivityMultiplier = insulinSensitivityMultiplier
         self.carbSensitivityMultiplier = carbSensitivityMultiplier
         self.carbRatioMultiplier = carbRatioMultiplier
+        self.deltaGlucose = deltaGlucose
+        self.deltaGlucoseInsulin = deltaGlucoseInsulin
+        self.deltaGlucoseBasal = deltaGlucoseBasal
     }
     
 }
@@ -528,10 +518,19 @@ extension ParameterEstimation {
         var report: [String] = [
             "## Settings Review \n", "From: \(dateFormatter.string(from: self.startDate)) \n", "To: \(dateFormatter.string(from: self.endDate)) \n", self.status,
             estimationIntervals.reduce(into: "", { (entries, entry) in
-                entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)), \(entry.estimationIntervalType), \(String(describing: entry.enteredCarbs?.doubleValue(for: .gram()))), \(String(describing: entry.observedCarbs?.doubleValue(for: .gram()))), \n deltaBG: \(String(describing: entry.deltaGlucose)), \n deltaBGinsulin: \(String(describing: entry.deltaGlucoseInsulin)), \n deltaBGbasal: \(String(describing: entry.deltaGlucoseBasal)), \n ISF multiplier: \(String(describing: entry.estimatedMultipliers?.insulinSensitivityMultiplier)), \n CR multiplier: \(String(describing: entry.estimatedMultipliers?.carbRatioMultiplier)), \n Basal multiplier: \(String(describing: entry.estimatedMultipliers?.basalMultiplier))"
+                entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)), \(entry.estimationIntervalType), \(String(describing: entry.enteredCarbs?.doubleValue(for: .gram()))), \(String(describing: entry.observedCarbs?.doubleValue(for: .gram()))), \n deltaBG: \(String(describing: entry.estimatedMultipliers?.deltaGlucose)), \n deltaBGinsulin: \(String(describing: entry.estimatedMultipliers?.deltaGlucoseInsulin)), \n deltaBGbasal: \(String(describing: entry.estimatedMultipliers?.deltaGlucoseBasal)), \n ISF multiplier: \(String(describing: entry.estimatedMultipliers?.insulinSensitivityMultiplier)), \n CR multiplier: \(String(describing: entry.estimatedMultipliers?.carbRatioMultiplier)), \n Basal multiplier: \(String(describing: entry.estimatedMultipliers?.basalMultiplier))"
             )}),
             "",
         ]
+        
+        for estimationInterval in estimationIntervals {
+            if estimationInterval.estimationIntervalType == .fasting {
+                report += ["\n Fasting estimation subintervals from: \(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))\n"]
+                for estimationSubInterval in estimationInterval.estimatedMultipliersSubIntervals {
+                    report += ["From: \(dateFormatter.string(from: estimationSubInterval?.startDate ?? Date())) To: \(dateFormatter.string(from: estimationSubInterval?.endDate ?? Date())) \n ISF multiplier: \(String(describing: estimationSubInterval?.insulinSensitivityMultiplier))\n Basal multiplier: \(String(describing: estimationSubInterval?.basalMultiplier))\n"]
+                }
+            }
+        }
         
         
         report += ["\n -- paramater estimation diagnostics -- \n"]
