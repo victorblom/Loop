@@ -506,16 +506,62 @@ extension ParameterEstimation {
         let dateFormatter = DateFormatter()
         dateFormatter.timeStyle = .short
         dateFormatter.dateStyle = .short
-        /*
-        let userCalendar = Calendar.current
-        var defaultDateComponents = DateComponents()
-        var defaultDate = Date()
-        defaultDateComponents.year = 1000
-        if let date = userCalendar.date(from: defaultDateComponents) {
-            defaultDate = date
-        }*/
+
+        var report: [String] = []
         
-        var report: [String] = [
+        report += ["--------------------------------"]
+        report += ["Settings Review Period\n\(dateFormatter.string(from: self.startDate)) to: \(dateFormatter.string(from: self.endDate))"]
+        
+        for estimationInterval in estimationIntervals {
+            guard
+                var insulinSensitivityMultiplier = estimationInterval.estimatedMultipliers?.insulinSensitivityMultiplier,
+                var carbRatioMultiplier = estimationInterval.estimatedMultipliers?.carbRatioMultiplier,
+                var basalMultiplier = estimationInterval.estimatedMultipliers?.basalMultiplier
+                else { continue }
+            insulinSensitivityMultiplier = (insulinSensitivityMultiplier * 100).rounded() / 100
+            carbRatioMultiplier = (carbRatioMultiplier * 100).rounded() / 100
+            basalMultiplier = (basalMultiplier * 100).rounded() / 100
+            
+            report += ["--------------------------------"]
+            if estimationInterval.estimationIntervalType == .fasting {
+                report += ["** Fasting interval **\n\(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))"]
+                if insulinSensitivityMultiplier > 1.5 || insulinSensitivityMultiplier < 0.5 {
+                    report += ["ISF multiplier: not available"]
+                } else {
+                    report += ["ISF multiplier: \(insulinSensitivityMultiplier)"]
+                }
+                report += ["Basal multiplier: \(basalMultiplier)"]
+                if basalMultiplier > 1.5 {
+                    report += ["Warning: any unannounced meals?"]
+                }
+                if insulinSensitivityMultiplier > 1.5 || insulinSensitivityMultiplier < 0.5 || basalMultiplier > 1.5 || basalMultiplier < 0.5 {
+                    report += ["Warning: check subinterval estimates"]
+                }
+            } else {
+                report += ["** Meal absorption interval **\n\(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))"]
+                report += ["CR multiplier: \(carbRatioMultiplier)"]
+                report += ["ISF multiplier: \(insulinSensitivityMultiplier)"]
+                report += ["Basal multiplier: \(basalMultiplier)"]
+                report += ["Warning: check meal entries for accuracy"]
+            }
+        }
+        
+        report += ["--------------------------------"]
+        report += ["-- Subinterval estimates during fasting --"]
+        
+        for estimationInterval in estimationIntervals {
+            if estimationInterval.estimationIntervalType == .fasting {
+                report += ["--------------------------------"]
+                report += ["\nFasting interval\n\(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))\n"]
+                for estimationSubInterval in estimationInterval.estimatedMultipliersSubIntervals {
+                    report += ["\(dateFormatter.string(from: estimationSubInterval?.startDate ?? Date())) to \(dateFormatter.string(from: estimationSubInterval?.endDate ?? Date()))\nISF multiplier: \(String(describing: estimationSubInterval?.insulinSensitivityMultiplier))\nBasal multiplier: \(String(describing: estimationSubInterval?.basalMultiplier))\n"]
+                }
+            }
+        }
+        report += ["--------------------------------"]
+        
+        report += ["\n-- Paramater estimation diagnostics --\n"]
+        report += [
             "## Settings Review \n", "From: \(dateFormatter.string(from: self.startDate)) \n", "To: \(dateFormatter.string(from: self.endDate)) \n", self.status,
             estimationIntervals.reduce(into: "", { (entries, entry) in
                 entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)), \(entry.estimationIntervalType), \(String(describing: entry.enteredCarbs?.doubleValue(for: .gram()))), \(String(describing: entry.observedCarbs?.doubleValue(for: .gram()))), \n deltaBG: \(String(describing: entry.estimatedMultipliers?.deltaGlucose)), \n deltaBGinsulin: \(String(describing: entry.estimatedMultipliers?.deltaGlucoseInsulin)), \n deltaBGbasal: \(String(describing: entry.estimatedMultipliers?.deltaGlucoseBasal)), \n ISF multiplier: \(String(describing: entry.estimatedMultipliers?.insulinSensitivityMultiplier)), \n CR multiplier: \(String(describing: entry.estimatedMultipliers?.carbRatioMultiplier)), \n Basal multiplier: \(String(describing: entry.estimatedMultipliers?.basalMultiplier))"
@@ -523,19 +569,10 @@ extension ParameterEstimation {
             "",
         ]
         
-        report += ["\n -- Estimates of parameter multipliers during fasting subintervals -- \n"]
-        
-        for estimationInterval in estimationIntervals {
-            if estimationInterval.estimationIntervalType == .fasting {
-                report += ["\n Fasting from: \(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))\n"]
-                for estimationSubInterval in estimationInterval.estimatedMultipliersSubIntervals {
-                    report += ["From: \(dateFormatter.string(from: estimationSubInterval?.startDate ?? Date())) To: \(dateFormatter.string(from: estimationSubInterval?.endDate ?? Date())) \n ISF multiplier: \(String(describing: estimationSubInterval?.insulinSensitivityMultiplier))\n Basal multiplier: \(String(describing: estimationSubInterval?.basalMultiplier))\n"]
-                }
-            }
-        }
+
         
         
-        report += ["\n -- paramater estimation diagnostics -- \n"]
+        report += ["\n -- Additional paramater estimation diagnostics -- \n"]
         
         // Glucose values
         report += ["\n *** Glucose values (start, mg/dL) \n",
