@@ -372,7 +372,7 @@ class EstimatedMultipliers {
      Generate narrative interpretation of the parameter estimation results
      Returns text for the Settings Review report
      */
-    func review(_ estimationIntervalType: EstimationIntervalType) -> [String] {
+    func reviewReport(_ estimationIntervalType: EstimationIntervalType) -> [String] {
         
         let dateFormatter = DateFormatter()
         dateFormatter.timeStyle = .short
@@ -395,7 +395,7 @@ class EstimatedMultipliers {
                 basalTag = "*"
             }
             reviewReport += ["\(dateFormatter.string(from: startDate)) to \(dateFormatter.string(from: endDate))"]
-            if deltaGlucose * deltaGlucoseInsulin > 0 || (insulinSensitivityMultiplier > 1.0 && basalMultiplier > 1.0) || (insulinSensitivityMultiplier < 1.0 && basalMultiplier < 1.0){
+            if (insulinSensitivityMultiplier > 1.0 && basalMultiplier > 1.0) || (insulinSensitivityMultiplier < 1.0 && basalMultiplier < 1.0){
                 reviewReport += ["ISF multiplier: not available"]
             } else {
                 reviewReport += ["ISF multiplier: \(reportInsulinSensitivityMultiplier) \(isfTag)"]
@@ -405,10 +405,10 @@ class EstimatedMultipliers {
             } else {
                 reviewReport += ["Basal multiplier: \(reportBasalMultiplier) \(basalTag)"]
             }
-            if (insulinSensitivityMultiplier > 1.0 && basalMultiplier > 1.0) || basalMultiplier >  1.25 {
+            if (insulinSensitivityMultiplier > 1.0 && basalMultiplier > 1.0) || basalMultiplier >  1.5 {
                 reviewReport += ["Warning: unannounced meals?"]
             }
-            if basalMultiplier <  0.75 {
+            if basalMultiplier <  0.5 {
                 reviewReport += ["Warning: exercise?"]
             }
             
@@ -498,7 +498,7 @@ extension ParameterEstimation {
         
         for estimationInterval in estimationIntervals {
             
-            guard let estimationIntervalReport = estimationInterval.estimatedMultipliers?.review(estimationInterval.estimationIntervalType)
+            guard let estimationIntervalReport = estimationInterval.estimatedMultipliers?.reviewReport(estimationInterval.estimationIntervalType)
                 else { continue }
 
             switch  estimationInterval.estimationIntervalType {
@@ -522,7 +522,7 @@ extension ParameterEstimation {
                 report += ["----------------------------------"]
                 for estimationSubInterval in estimationInterval.estimatedMultipliersSubIntervals {
 
-                    guard let estimationSubIntervalReport = estimationSubInterval?.review(estimationInterval.estimationIntervalType)
+                    guard let estimationSubIntervalReport = estimationSubInterval?.reviewReport(estimationInterval.estimationIntervalType)
                         else { continue }
                     report += estimationSubIntervalReport
                     report += ["---"]
@@ -533,14 +533,43 @@ extension ParameterEstimation {
         report += ["Paramater estimation diagnostics"]
         report += ["=================================="]
         report += [
-            "## Settings Review \n", "From: \(dateFormatter.string(from: self.startDate)) \n", "To: \(dateFormatter.string(from: self.endDate)) \n", self.parameterEstimationStatus,
+            "## Parameter Estimation \n", "From: \(dateFormatter.string(from: self.startDate)) \n", "To: \(dateFormatter.string(from: self.endDate)) \n", self.parameterEstimationStatus,
             estimationIntervals.reduce(into: "", { (entries, entry) in
                 entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)), \(entry.estimationIntervalType), \(String(describing: entry.enteredCarbs?.doubleValue(for: .gram()))), \(String(describing: entry.observedCarbs?.doubleValue(for: .gram()))), \n deltaBG: \(String(describing: entry.estimatedMultipliers?.deltaGlucose)), \n deltaBGinsulin: \(String(describing: entry.estimatedMultipliers?.deltaGlucoseInsulin)), \n deltaBGbasal: \(String(describing: entry.estimatedMultipliers?.deltaGlucoseBasal)), \n ISF multiplier: \(String(describing: entry.estimatedMultipliers?.insulinSensitivityMultiplier)), \n CR multiplier: \(String(describing: entry.estimatedMultipliers?.carbRatioMultiplier)), \n Basal multiplier: \(String(describing: entry.estimatedMultipliers?.basalMultiplier))"
             )}),
             "",
         ]
+        
+        report += ["\n=================================="]
+        report += ["Fasting subintervals diagnostics"]
+        report += ["=================================="]
+        for estimationInterval in estimationIntervals {
+            if estimationInterval.estimationIntervalType == .fasting {
+                report += ["----------------------------------"]
+                report += ["\(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))"]
+                report += ["----------------------------------"]
+                for estimationSubInterval in estimationInterval.estimatedMultipliersSubIntervals {
+                    guard let start = estimationSubInterval?.startDate,
+                        let end = estimationSubInterval?.endDate,
+                        let deltaGlucose = estimationSubInterval?.deltaGlucose,
+                        let deltaGlucoseInsulin = estimationSubInterval?.deltaGlucoseInsulin,
+                        let deltaGlucoseBasal = estimationSubInterval?.deltaGlucoseBasal,
+                        let isfMultiplier = estimationSubInterval?.insulinSensitivityMultiplier,
+                        let basalMultiplier = estimationSubInterval?.basalMultiplier
+                        else { continue
+                    }
+                    report += ["\(dateFormatter.string(from: start)) to \(dateFormatter.string(from: end))"]
+                    report += ["deltaGlucose: \(deltaGlucose)"]
+                    report += ["deltaGlucoseInsulin: \(deltaGlucoseInsulin)"]
+                    report += ["deltaGlucoseBasal: \(deltaGlucoseBasal)"]
+                    report += ["ISF multiplier: \(isfMultiplier)"]
+                    report += ["Basal multiplier: \(basalMultiplier)"]
+                    report += ["---"]
+                }
+            }
+        }
     
-        report += ["\n -- Additional paramater estimation diagnostics -- \n"]
+        report += ["\n -- Paramater estimation timelines -- \n"]
         
         // Glucose values
         report += ["\n *** Glucose values (start, mg/dL) \n",
