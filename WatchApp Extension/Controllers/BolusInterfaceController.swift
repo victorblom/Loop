@@ -48,7 +48,7 @@ final class BolusInterfaceController: WKInterfaceController, IdentifiableClass {
         case let bolus where bolus > 1:
             return Int((bolus - 1.0) * 20) + pickerValueFromBolusValue(1)
         default:
-            return Int(bolusValue * 20)
+            return Int(bolusValue * 40)
         }
     }
 
@@ -56,10 +56,10 @@ final class BolusInterfaceController: WKInterfaceController, IdentifiableClass {
         switch pickerValue {
         case let picker where picker > 220:
             return Double(picker - 220) / 10.0 + bolusValueFromPickerValue(220)
-        case let picker where picker > 20:
-            return Double(picker - 20) / 20.0 + bolusValueFromPickerValue(20)
+        case let picker where picker > 40:
+            return Double(picker - 40) / 20.0 + bolusValueFromPickerValue(40)
         default:
-            return Double(pickerValue) / 20.0
+            return Double(pickerValue) / 40.0
         }
     }
 
@@ -126,13 +126,13 @@ final class BolusInterfaceController: WKInterfaceController, IdentifiableClass {
     // MARK: - Actions
 
     @IBAction func decrement() {
-        pickerValue -= 2
+        pickerValue -= 10
 
         WKInterfaceDevice.current().play(.directionDown)
     }
 
     @IBAction func increment() {
-        pickerValue += 2
+        pickerValue += 10
 
         WKInterfaceDevice.current().play(.directionUp)
     }

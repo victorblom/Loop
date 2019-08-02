@@ -56,7 +56,7 @@ class ParameterEstimation {
     /**
      updateParameterEstimates: assembles estimationIntervals and performs parameter estimation of the intervals from startDate to endDate
      */
-    func updateParameterEstimates() {
+    func update() {
         
         // Assemble estimation intervals
         assembleEstimationIntervals()
@@ -100,7 +100,7 @@ class ParameterEstimation {
                 let observedCarbs = carbStatus.absorption?.observed,
                 let timeRemaining = carbStatus.absorption?.estimatedTimeRemaining
                 else {
-                    self.parameterEstimationStatus = "*** Err: a carbStatus field not available"
+                    self.parameterEstimationStatus = "xxx Error: a required carbStatus field is not available."
                     continue
             }
             
@@ -108,7 +108,7 @@ class ParameterEstimation {
                 // If an active carb absorption entry is detected, clean-up and terminate interval assembly
                 if entryStart < self.startDate {
                     self.endDate = self.startDate
-                    self.parameterEstimationStatus = "*** Err: active carb absorption started before start of estimation"
+                    self.parameterEstimationStatus = "xxx Error: currectly active carb absorption started before estimation start, no data available"
                     return // if active carb absorption started before start of the estimation interval we have no valid intervals available for estimation
                 }
                 
@@ -122,7 +122,7 @@ class ParameterEstimation {
                         let basalEffect = self.basalEffect?.filterDateRange(runningEndDate, self.endDate)
                         estimationIntervals.append(EstimationInterval(startDate: runningEndDate, endDate: self.endDate, type: .fasting, glucose: glucoseEffect, insulinEffect: insulinEffect, basalEffect: basalEffect))
                     }
-                    self.parameterEstimationStatus = "*** Estimation interval assembly completed with a fasting interval after active absorption detected after estimation end"
+                    self.parameterEstimationStatus = "*** Estimation interval assembly completed with a fasting interval. There is an active meal absorption that started after the end of the estimation period."
                     return
                 }
                 
@@ -133,7 +133,7 @@ class ParameterEstimation {
                     let insulinEffect = self.insulinEffect?.filterDateRange(runningEndDate, self.endDate)
                     let basalEffect = self.basalEffect?.filterDateRange(runningEndDate, self.endDate)
                     estimationIntervals.append(EstimationInterval(startDate: runningEndDate, endDate: self.endDate, type: .fasting, glucose: glucoseEffect, insulinEffect: insulinEffect, basalEffect: basalEffect))
-                    self.parameterEstimationStatus = "*** Estimation interval assembly completed with a fasting interval after active absorption detected before estimation end"
+                    self.parameterEstimationStatus = "*** Estimation interval assembly completed with a fasting interval. There is an active meal  absorption that started before the end of the estimation period."
                     return
                 }
                 
@@ -152,7 +152,7 @@ class ParameterEstimation {
                 }
                 self.endDate = runningEndDate
                 
-                self.parameterEstimationStatus = "*** Completed assembly of estimation intervals after trimming out active absorptions"
+                self.parameterEstimationStatus = "*** Assembly of estimation intervals completed by trimming out active meal absorptions."
                 return
             }
             
@@ -233,7 +233,7 @@ class ParameterEstimation {
             estimationIntervals.append(EstimationInterval(startDate: runningEndDate, endDate: self.endDate, type: .fasting, glucose: glucoseEffect, insulinEffect: insulinEffect, basalEffect: basalEffect))
         }
         
-        self.parameterEstimationStatus = "*** Estimation interval assembly completed with a fasting interval"
+        self.parameterEstimationStatus = "*** Estimation interval assembly completed with a fasting interval. There is no active meal absorption."
         return
     }
 }
@@ -415,8 +415,8 @@ class EstimatedMultipliers {
         case .carbAbsorption:
             reviewReport += ["\(dateFormatter.string(from: startDate)) to \(dateFormatter.string(from: endDate))"]
             if abs( carbRatioMultiplier - 1.0 ) < 0.02 {
-                reviewReport += ["Good entered/observed match,"]
-                reviewReport += ["no parameter estimates available"]
+                reviewReport += ["Good observed/entered carbs match,"]
+                reviewReport += ["parameter estimates are not available."]
             } else {
                 reviewReport += ["CR multiplier: \(reportCarbRatioMultiplier)"]
                 if abs(deltaGlucose) < 0.5 * deltaGlucoseBasal && abs(deltaGlucose) < 0.5 * (deltaGlucose + deltaGlucoseInsulin) {
@@ -530,15 +530,38 @@ extension ParameterEstimation {
             }
         }
         report += ["\n=================================="]
-        report += ["Paramater estimation diagnostics"]
+        report += ["Parameter estimation diagnostics"]
         report += ["=================================="]
-        report += [
-            "## Parameter Estimation \n", "From: \(dateFormatter.string(from: self.startDate)) \n", "To: \(dateFormatter.string(from: self.endDate)) \n", self.parameterEstimationStatus,
-            estimationIntervals.reduce(into: "", { (entries, entry) in
-                entries.append("\n ---------- \n \(dateFormatter.string(from: entry.startDate)), \(dateFormatter.string(from: entry.endDate)), \(entry.estimationIntervalType), \(String(describing: entry.enteredCarbs?.doubleValue(for: .gram()))), \(String(describing: entry.observedCarbs?.doubleValue(for: .gram()))), \n deltaBG: \(String(describing: entry.estimatedMultipliers?.deltaGlucose)), \n deltaBGinsulin: \(String(describing: entry.estimatedMultipliers?.deltaGlucoseInsulin)), \n deltaBGbasal: \(String(describing: entry.estimatedMultipliers?.deltaGlucoseBasal)), \n ISF multiplier: \(String(describing: entry.estimatedMultipliers?.insulinSensitivityMultiplier)), \n CR multiplier: \(String(describing: entry.estimatedMultipliers?.carbRatioMultiplier)), \n Basal multiplier: \(String(describing: entry.estimatedMultipliers?.basalMultiplier))"
-            )}),
-            "",
-        ]
+        report += ["## Estimation period"]
+        report += ["\(dateFormatter.string(from: self.startDate)) to: \(dateFormatter.string(from: self.endDate))"]
+        report += [self.parameterEstimationStatus]
+        for estimationInterval in estimationIntervals {
+            switch  estimationInterval.estimationIntervalType {
+            case .fasting: report += ["\n** Fasting **"]
+            case .carbAbsorption: report += ["\n** Meal absorption **"]
+            default: report += ["\n** Error: unknown estimation interval type **\n"]
+            }
+            report += ["\(dateFormatter.string(from: estimationInterval.startDate)) to \(dateFormatter.string(from: estimationInterval.endDate))"]
+            report += ["-----"]
+            guard
+                let deltaGlucose = estimationInterval.estimatedMultipliers?.deltaGlucose,
+                let deltaGlucoseInsulin = estimationInterval.estimatedMultipliers?.deltaGlucoseInsulin,
+                let deltaGlucoseBasal = estimationInterval.estimatedMultipliers?.deltaGlucoseBasal,
+                let isfMultiplier = estimationInterval.estimatedMultipliers?.insulinSensitivityMultiplier,
+                let crMultiplier = estimationInterval.estimatedMultipliers?.insulinSensitivityMultiplier,
+                let basalMultiplier = estimationInterval.estimatedMultipliers?.basalMultiplier
+                else { continue
+            }
+            report += ["deltaGlucose: \(deltaGlucose)"]
+            report += ["deltaGlucoseInsulin: \(deltaGlucoseInsulin)"]
+            report += ["deltaGlucoseBasal: \(deltaGlucoseBasal)"]
+            report += ["ISF multiplier: \(isfMultiplier)"]
+            report += ["Basal multiplier: \(basalMultiplier)"]
+            report += ["CR multiplier: \(crMultiplier)"]
+            report += ["Entered: \(String(describing: estimationInterval.enteredCarbs?.doubleValue(for: .gram())))"]
+            report += ["Observed: \(String(describing: estimationInterval.observedCarbs?.doubleValue(for: .gram())))"]
+            report += ["----"]
+        }
         
         report += ["\n=================================="]
         report += ["Fasting subintervals diagnostics"]
@@ -569,10 +592,13 @@ extension ParameterEstimation {
             }
         }
     
-        report += ["\n -- Paramater estimation timelines -- \n"]
-        
+
+        report += ["\n -----------------------------------"]
+        report += ["Paramater estimation timelines"]
+        report += ["-----------------------------------"]
+
         // Glucose values
-        report += ["\n *** Glucose values (start, mg/dL) \n",
+        report += ["*** Glucose values (start, mg/dL) \n",
         self.glucose.reduce(into: "", { (entries, entry) in
         entries.append("* \(dateFormatter.string(from: entry.startDate)), \(entry.quantity.doubleValue(for: .milligramsPerDeciliter))\n")
         })]

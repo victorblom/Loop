@@ -208,11 +208,9 @@ final class LoopDataManager {
     fileprivate var lastTempBasal: DoseEntry?
     fileprivate var lastRequestedBolus: DoseEntry?
     
-    // Time series for parameter estimation
-    private var historicalInsulinEffect: [GlucoseEffect]?
-    private var historicalGlucose: [GlucoseValue] = []
-    private var carbStatuses: [CarbStatus<StoredCarbEntry>] = []
-    private var parameterEstimates: ParameterEstimation = ParameterEstimation(startDate: Date(), endDate: Date())
+    // Parameter estimation
+    // private var parameterEstimates: ParameterEstimation = ParameterEstimation(startDate: Date(), endDate: Date())
+    private var parameterEstimates: ParameterEstimation?
 
     /// The last date at which a loop completed, from prediction to dose (if dosing is enabled)
     var lastLoopCompleted: Date? {
@@ -803,145 +801,7 @@ extension LoopDataManager {
         }
 
     }
-    
-    /// Collects data over past 24 hours and runs parameter estimation
-    /// - Throws:
-    ///     - LoopError.configurationError
-    ///     - LoopError.glucoseTooOld
-    ///     - LoopError.missingDataError
-    ///     - LoopError.pumpDataTooOld
-    fileprivate func computeParameterEstimates() throws {
-        dispatchPrecondition(condition: .onQueue(dataAccessQueue))
-        let updateGroup = DispatchGroup()
-        
-        // Fetch glucose effects as far back as we want to make retroactive analysis
-        var latestGlucoseDate: Date?
-        updateGroup.enter()
-        glucoseStore.getCachedGlucoseSamples(start: Date(timeIntervalSinceNow: -settings.recencyInterval)) { (values) in
-            latestGlucoseDate = values.last?.startDate
-            updateGroup.leave()
-        }
-        _ = updateGroup.wait(timeout: .distantFuture)
-        
-        guard let lastGlucoseDate = latestGlucoseDate else {
-            throw LoopError.missingDataError(.glucose)
-        }
-        
-        let retrospectiveStart = lastGlucoseDate.addingTimeInterval(-settings.retrospectiveCorrectionIntegrationInterval)
-        
-        let earliestEffectDate = Date(timeIntervalSinceNow: .hours(-32))
-        let nextEffectDate = insulinCounteractionEffects.last?.endDate ?? earliestEffectDate
-        
-        if glucoseMomentumEffect == nil {
-            updateGroup.enter()
-            glucoseStore.getRecentMomentumEffect { (effects) -> Void in
-                self.glucoseMomentumEffect = effects
-                updateGroup.leave()
-            }
-        }
-        
-        if insulinEffect == nil {
-            updateGroup.enter()
-            doseStore.getGlucoseEffects(start: nextEffectDate) { (result) -> Void in
-                switch result {
-                case .failure(let error):
-                    self.logger.error(error)
-                    self.insulinEffect = nil
-                case .success(let effects):
-                    self.insulinEffect = effects
-                }
-                
-                updateGroup.leave()
-            }
-            
-        }
-        
-        _ = updateGroup.wait(timeout: .distantFuture)
-        
-        if nextEffectDate < lastGlucoseDate, let insulinEffect = insulinEffect {
-            updateGroup.enter()
-            self.logger.debug("Fetching counteraction effects after \(nextEffectDate)")
-            glucoseStore.getCounteractionEffects(start: nextEffectDate, to: insulinEffect) { (velocities) in
-                self.insulinCounteractionEffects.append(contentsOf: velocities)
-                self.insulinCounteractionEffects = self.insulinCounteractionEffects.filterDateRange(earliestEffectDate, nil)
-                
-                updateGroup.leave()
-            }
-            _ = updateGroup.wait(timeout: .distantFuture)
-        }
-        
-        if carbEffect == nil {
-            updateGroup.enter()
-            carbStore.getGlucoseEffects(
-                start: retrospectiveStart,
-                effectVelocities: settings.dynamicCarbAbsorptionEnabled ? insulinCounteractionEffects : nil
-            ) { (result) -> Void in
-                switch result {
-                case .failure(let error):
-                    self.logger.error(error)
-                    self.carbEffect = nil
-                case .success(let effects):
-                    self.carbEffect = effects
-                }
-                
-                updateGroup.leave()
-            }
-        }
-        
-        self.parameterEstimates = ParameterEstimation(startDate: lastGlucoseDate.addingTimeInterval(.hours(-24.0)), endDate: lastGlucoseDate)
-        
-        // Collect data for parameter estimation
-        // Collect blood glucose values for parameter estimation over past 24 hours
-        let startHistoricalGlucose = lastGlucoseDate.addingTimeInterval(.hours(-32.0))
-        updateGroup.enter()
-        glucoseStore.getCachedGlucoseSamples(start: startHistoricalGlucose) { (values) in
-            self.historicalGlucose = values
-            updateGroup.leave()
-        }
-        _ = updateGroup.wait(timeout: .distantFuture)
-        
-        parameterEstimates.glucose = self.historicalGlucose
-        
-        let historicalBasalEffect = updateBasalEffect(startDate: lastGlucoseDate.addingTimeInterval(.hours(-32.0)), endDate: lastGlucoseDate)
-        parameterEstimates.basalEffect = historicalBasalEffect
-        
-        // Collect insulin effect time series over past  24  hours  for parameter estimation
-        let startHistoricalInsulinEffect = lastGlucoseDate.addingTimeInterval(.hours(-32.0))
-        updateGroup.enter()
-        doseStore.getGlucoseEffects(start: startHistoricalInsulinEffect) { (result) -> Void in
-            switch result {
-            case .failure(let error):
-                self.logger.error(error)
-                self.historicalInsulinEffect = nil
-            case .success(let effects):
-                self.historicalInsulinEffect = effects.filterDateRange(startHistoricalInsulinEffect, lastGlucoseDate)
-            }
-            
-            updateGroup.leave()
-        }
-        _ = updateGroup.wait(timeout: .distantFuture)
-        
-        parameterEstimates.insulinEffect = self.historicalInsulinEffect
-        
-        let listStart = lastGlucoseDate.addingTimeInterval(.hours(-32.0))
-        updateGroup.enter()
-        carbStore.getCarbStatus(start: listStart, effectVelocities:  insulinCounteractionEffects) { (result) in
-            switch result {
-            case .success(let status):
-                self.carbStatuses = status
-            case .failure(let error):
-                self.logger.error(error)
-            }
-            
-            updateGroup.leave()
-        }
-        _ = updateGroup.wait(timeout: .distantFuture)
-        
-        parameterEstimates.carbStatuses = self.carbStatuses.sorted(by: { $0.startDate < $1.startDate })
-        
-        parameterEstimates.updateParameterEstimates()
-        
-    }
+
 
     private func notify(forChange context: LoopUpdateContext) {
         NotificationCenter.default.post(name: .LoopDataUpdated,
@@ -1108,30 +968,6 @@ extension LoopDataManager {
     
     }
     
-    /// Generates a glucose prediction effect of zero temping over a period of time
-    ///
-    private func updateBasalEffect(startDate: Date, endDate: Date) -> [GlucoseEffect] {
-        
-        var basalEffect: [GlucoseEffect] = []
-        // Get settings, otherwise clear effect and throw error
-        guard
-            let insulinModel = insulinModelSettings?.model,
-            let insulinSensitivity = insulinSensitivitySchedule,
-            let basalRateSchedule = basalRateSchedule
-            else {
-                return(basalEffect)
-        }
-        
-        let insulinActionDuration = insulinModel.effectDuration
-
-        // use the new LoopKit method tempBasalGlucoseEffects to generate zero temp effects
-        let startZeroTempDose = startDate.addingTimeInterval(-insulinActionDuration)
-        let endZeroTempDose = endDate
-        let zeroTemp = DoseEntry(type: .tempBasal, startDate: startZeroTempDose, endDate: endZeroTempDose, value: 0.0, unit: DoseUnit.unitsPerHour)
-        basalEffect = zeroTemp.tempBasalGlucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivity, basalRateSchedule: basalRateSchedule).filterDateRange(startDate, endDate)
-        return(basalEffect)
-    }
-
     /// Generates a fraction of glucose effect of zero temping
     ///
     private func effectFraction(glucoseEffect: [GlucoseEffect], fraction: Double) -> [GlucoseEffect] {
@@ -1142,7 +978,6 @@ extension LoopDataManager {
         }
         return fractionalEffect
     }
-    
     
     /// Runs the glucose prediction on the latest effect data.
     ///
@@ -1280,6 +1115,107 @@ extension LoopDataManager {
             }
         }
     }
+    
+    /// dm61-parameter-estimation
+    /// Collects data over past 24 hours and runs parameter estimation
+    /// - Throws:
+    ///     - LoopError.missingDataError
+    fileprivate func computeParameterEstimates() throws {
+        dispatchPrecondition(condition: .onQueue(dataAccessQueue))
+        let updateGroup = DispatchGroup()
+        
+        let startEstimationPeriod  =  Date(timeIntervalSinceNow: .hours(-24))
+        let earliestEffectDate = startEstimationPeriod.addingTimeInterval(.hours(-8))
+        
+        // Collect data for parameter estimation
+        
+        // Collect blood glucose values
+        var historicalGlucose: [GlucoseValue] = []
+        var latestGlucoseDate: Date?
+        updateGroup.enter()
+        glucoseStore.getCachedGlucoseSamples(start: earliestEffectDate) { (values) in
+            historicalGlucose = values
+            latestGlucoseDate = values.last?.startDate
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        
+        guard let endEstimationPeriod = latestGlucoseDate else {
+            throw LoopError.missingDataError(.glucose)
+        }
+        
+        self.parameterEstimates = ParameterEstimation(startDate: startEstimationPeriod, endDate: endEstimationPeriod)
+        
+        self.parameterEstimates?.glucose = historicalGlucose
+        
+        // Collect effects of suspending insulin delivery
+        let historicalBasalEffect = updateBasalEffect(startDate: earliestEffectDate, endDate: endEstimationPeriod)
+        self.parameterEstimates?.basalEffect = historicalBasalEffect
+        
+        // Collect insulin effect time series
+        var historicalInsulinEffect: [GlucoseEffect]?
+        updateGroup.enter()
+        doseStore.getGlucoseEffects(start: earliestEffectDate) { (result) -> Void in
+            switch result {
+            case .failure(let error):
+                self.logger.error(error)
+                historicalInsulinEffect = nil
+            case .success(let effects):
+                historicalInsulinEffect = effects.filterDateRange(earliestEffectDate, endEstimationPeriod)
+            }
+            
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        
+        self.parameterEstimates?.insulinEffect = historicalInsulinEffect
+        
+        // Collect carb statuses
+        var carbStatuses: [CarbStatus<StoredCarbEntry>] = []
+        updateGroup.enter()
+        carbStore.getCarbStatus(start: earliestEffectDate, effectVelocities:  insulinCounteractionEffects) { (result) in
+            switch result {
+            case .success(let status):
+                carbStatuses = status
+            case .failure(let error):
+                self.logger.error(error)
+            }
+            
+            updateGroup.leave()
+        }
+        _ = updateGroup.wait(timeout: .distantFuture)
+        
+        self.parameterEstimates?.carbStatuses = carbStatuses.sorted(by: { $0.startDate < $1.startDate })
+        
+        // compute  parameter estimates
+        self.parameterEstimates?.update()
+        
+    }
+    
+    /// Generates a glucose prediction effect of suspending insulin delivery over a period of time
+    ///
+    private func updateBasalEffect(startDate: Date, endDate: Date) -> [GlucoseEffect] {
+        
+        var basalEffect: [GlucoseEffect] = []
+        // Get settings, otherwise clear effect and throw error
+        guard
+            let insulinModel = insulinModelSettings?.model,
+            let insulinSensitivity = insulinSensitivitySchedule,
+            let basalRateSchedule = basalRateSchedule
+            else {
+                return(basalEffect)
+        }
+        
+        let insulinActionDuration = insulinModel.effectDuration
+        
+        // use the new LoopKit method tempBasalGlucoseEffects to generate zero temp effects
+        let startZeroTempDose = startDate.addingTimeInterval(-insulinActionDuration)
+        let endZeroTempDose = endDate
+        let zeroTemp = DoseEntry(type: .tempBasal, startDate: startZeroTempDose, endDate: endZeroTempDose, value: 0.0, unit: DoseUnit.unitsPerHour)
+        basalEffect = zeroTemp.tempBasalGlucoseEffects(insulinModel: insulinModel, insulinSensitivity: insulinSensitivity, basalRateSchedule: basalRateSchedule).filterDateRange(startDate, endDate)
+        return(basalEffect)
+    }
+    
 }
 
 /// Describes retrospective correction interface
@@ -1415,7 +1351,9 @@ extension LoopDataManager {
         }
     }
     
-    /// Executes a closure with access to the current state of the Loop and estimated parameters
+    
+    /// dm61-parameter-estimation
+    /// Executes a closure with access to the current state of the Loop and Parameter  Estimation
     ///
     /// This operation is performed asynchronously and the closure will be executed on an arbitrary background queue.
     ///
@@ -1533,11 +1471,12 @@ extension LoopDataManager {
                 entries.append("")
             }
             
-            self.parameterEstimates.updateParameterEstimates()
+            /*
+            self.parameterEstimates.update()
             self.parameterEstimates.generateReport { (report) in
                 entries.append(report)
                 entries.append("")
-            }
+            }*/
 
             self.glucoseStore.generateDiagnosticReport { (report) in
                 entries.append(report)
@@ -1559,6 +1498,7 @@ extension LoopDataManager {
     }
     
     
+    /// dm61-parameter-estimation
     /// Generates a parameter estimation report
     ///
     /// This operation is performed asynchronously and the completion will be executed on an arbitrary background queue.
@@ -1569,7 +1509,7 @@ extension LoopDataManager {
             
             var entries: [String] = []
             
-            self.parameterEstimates.generateReport { (report) in
+            self.parameterEstimates?.generateReport { (report) in
                 entries.append(report)
                 entries.append("")
             }
