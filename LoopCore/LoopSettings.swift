@@ -11,6 +11,8 @@ import HealthKit
 public struct LoopSettings: Equatable {
     public var dosingEnabled = false
 
+    public var microbolusSettings = Microbolus.Settings()
+
     public let dynamicCarbAbsorptionEnabled = true
 
     public static let defaultCarbAbsorptionTimes: CarbStore.DefaultAbsorptionTimes = (fast: .hours(2), medium: .hours(3), slow: .hours(4))
@@ -33,6 +35,8 @@ public struct LoopSettings: Equatable {
 
     public let retrospectiveCorrectionEnabled = true
 
+    public var notOpenBolusScreen: Bool { dosingEnabled && microbolusSettings.enabled && !microbolusSettings.shouldOpenBolusScreen }
+
     /// The interval over which to aggregate changes in glucose for retrospective correction
     public let retrospectiveCorrectionGroupingInterval = TimeInterval(minutes: 30)
 
@@ -54,7 +58,7 @@ public struct LoopSettings: Equatable {
     public var glucoseUnit: HKUnit? {
         return glucoseTargetRangeSchedule?.unit
     }
-    
+
     // MARK - Push Notifications
     
     public var deviceToken: Data?
@@ -192,6 +196,11 @@ extension LoopSettings: RawRepresentable {
             self.dosingEnabled = dosingEnabled
         }
 
+        if let microbolusSettingsRaw = rawValue["microbolusSettings"] as? Microbolus.Settings.RawValue,
+            let microbolusSettings = Microbolus.Settings(rawValue: microbolusSettingsRaw) {
+            self.microbolusSettings = microbolusSettings
+        }
+
         if let glucoseRangeScheduleRawValue = rawValue["glucoseTargetRangeSchedule"] as? GlucoseRangeSchedule.RawValue {
             self.glucoseTargetRangeSchedule = GlucoseRangeSchedule(rawValue: glucoseRangeScheduleRawValue)
 
@@ -235,7 +244,8 @@ extension LoopSettings: RawRepresentable {
         var raw: RawValue = [
             "version": LoopSettings.version,
             "dosingEnabled": dosingEnabled,
-            "overridePresets": overridePresets.map { $0.rawValue }
+            "overridePresets": overridePresets.map { $0.rawValue },
+            "microbolusSettings": microbolusSettings.rawValue
         ]
 
         raw["glucoseTargetRangeSchedule"] = glucoseTargetRangeSchedule?.rawValue
